@@ -31,8 +31,9 @@
 /*-----------------------------------------------------------------------------------------------------------------------------*/
 /*
  @brief: Writes string to file
- @param: 
- @return: 
+ @param:argc: Argument count passed through command line
+ @param:argv: Arguments passed through command line 
+ @return: Status of the function
  */
 /*-----------------------------------------------------------------------------------------------------------------------------*/
 int main(char argc, char* argv[])
