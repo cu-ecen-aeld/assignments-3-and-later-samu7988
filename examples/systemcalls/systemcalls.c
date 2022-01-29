@@ -82,7 +82,7 @@ bool do_exec(int count, ...)
 	if(pid == -1)
 	{
 		//Fork failed
-		exit(EXIT_FAILURE);
+		return false;
 	}
 	else if(pid == 0)
 	{
@@ -96,18 +96,18 @@ bool do_exec(int count, ...)
 		//Parent context
       if(waitpid(pid,&wait_status,0) == -1)
       {
-		exit(EXIT_FAILURE);
+		return false;
       }
 	
 	  if(WEXITSTATUS(wait_status) == EXIT_FAILURE)
 	  {
-		exit(EXIT_FAILURE);
+		return false;
 	  }
 
 
 	}
 
-	exit(EXIT_SUCCESS);
+	return true;
 
 }
 
@@ -155,7 +155,7 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
 	if(pid == -1)
 	{
 		//Fork failed
-		exit(EXIT_FAILURE);
+		return false;
 	}
 	else if(pid == 0)
 	{
@@ -175,18 +175,18 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
 
 	  if(waitpid(pid,&wait_status,0) == -1)
 	  {
-		exit(EXIT_FAILURE); 
+		return false;
 	  }
 	  close(fd);
 	  if(WEXITSTATUS(wait_status) == EXIT_FAILURE)
 	  {
-		exit(EXIT_FAILURE); 
+		return false;
 	  }
 	}
 	
 
     
 	
-	exit(EXIT_SUCCESS); 
+	return true;
     
 }
