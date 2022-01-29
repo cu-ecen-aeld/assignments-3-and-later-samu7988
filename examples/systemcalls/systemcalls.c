@@ -131,7 +131,7 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
     // and may be removed
     command[count] = command[count];
 
-
+    va_end(args);
 /*
  * TODO
  *   Call execv, but first using https://stackoverflow.com/a/13784315/1446624 as a refernce,
@@ -144,7 +144,7 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
 	int pid = 0;
 	int wait_status = 0;
 	
-	int fd = open(outputfile, O_WRONLY|O_TRUNC|O_CREAT, 0644);
+	int fd = open(outputfile, O_WRONLY);
 	if (fd < 0) 
 	{ 
 		exit(EXIT_FAILURE);
@@ -164,7 +164,7 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
 		{ 
 			exit(EXIT_FAILURE);
 		}
-
+		close(fd);
 		execv(command[0], command);
 		exit(EXIT_FAILURE); 
 	}
@@ -177,14 +177,14 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
 	  {
 		exit(EXIT_FAILURE); 
 	  }
-	
+	  close(fd);
 	  if(WEXITSTATUS(wait_status) == EXIT_FAILURE)
 	  {
 		exit(EXIT_FAILURE); 
 	  }
 	}
 	
-    va_end(args);
+
     
 	
 	exit(EXIT_SUCCESS); 
