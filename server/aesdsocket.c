@@ -3,6 +3,8 @@
 #include<sys/types.h>
 #include<netdb.h>
 #include<string.h>
+#include <syslog.h>
+#include <arpa/inet.h>
 
 #define PORT_NUMBER ("9000")
 #define FAMILY (AF_INET6) //set the AI FAMILY
@@ -10,6 +12,8 @@
 #define FLAGS (AI_PASSIVE)
 #define IP_ADDR	(0)
 #define MAX_PENDING_CONN_REQUEST  (3)
+#define RECV_FILE_NAME ("/var/tmp/aesd_socketdata")
+
 int get_address_info(struct addrinfo** serveinfo)
 {
 	int status = 0;
@@ -26,6 +30,8 @@ int get_address_info(struct addrinfo** serveinfo)
 }
 int main()
 {
+	openlog("AESD_SOCKET", LOG_DEBUG, LOG_DAEMON); //check /var/log/syslog
+
 	int status = 0;
 		
 	//get address info	
@@ -33,7 +39,7 @@ int main()
 	status = get_address_info(&serveinfo);
 	if(status != 0)
 	{
-		printf("get_addrress_info() failed\n\r");
+		syslog(LOG_ERR,"get_addrress_info() failed\n\r");
 		return -1;
 	}
 
@@ -41,7 +47,7 @@ int main()
 	int sockfd= socket(FAMILY,SOCKET_TYPE, IP_ADDR);
 	if(sockfd == -1)
 	{
-		printf("socket() API failed\n\r");
+		syslog(LOG_ERR,"socket() failed\n\r");
 		return -1;
 	}
 	
@@ -49,8 +55,7 @@ int main()
 	status = bind(sockfd, serveinfo->ai_addr,  serveinfo->ai_addrlen);
 	if(status == -1 )        
 	{
-		printf("%s",gai_strerror(status));
-		printf("bind() is failed/n/r");
+		syslog(LOG_ERR,"bind() failed\n\r");
 		return -1;
 	}
 	
@@ -58,18 +63,39 @@ int main()
 	status = listen(sockfd,MAX_PENDING_CONN_REQUEST) ;
 	if(status == -1)
 	{
-		printf("listen() failed\n\r");
+		syslog(LOG_ERR,"listen() failed\n\r");
 		return -1;
 	}
-	printf("waiting for connection from client\n\r");
+	syslog(LOG_ERR,"Waiting for connection from client() \n\r");
 	//Accept
-	status = accept(sockfd,serveinfo->ai_addr, &(serveinfo->ai_addrlen) );	
+	//struct sockaddr client_addr; 
+	struct sockaddr_in client_addr;
+	memset(&client_addr, 0, sizeof(client_addr));
+
+	socklen_t client_addr_len = 0;
+
+	status = accept(sockfd, (struct sockaddr*)&client_addr, &client_addr_len);	
+
 	if(status == -1)
 	{
-		printf("accept() failed\n\r");
+		syslog(LOG_ERR,"accept() \n\r");
 		return -1;
 	}	
 
-	printf("Accepted connection from client \n\r");
-	
+
+	//syslog(LOG_ERR,"Accepted connection from %d%d%d%d\n\r",);
+	//printf("Client Adress = %s",inet_ntoa(client_addr.sin_addr));
+	syslog(LOG_ERR,"Accepted connection from %s\n\r",inet_ntoa(client_addr.sin_addr)); //inet_ntoa converts raw address into human readable format
+
+
+	//open file to write the received data from client
+	FILE* fptr = fopen(RECV_FILE_NAME,"w"); //use a+ to open already existing file, w to create new file if not exist 
+	if(fptr == NULL)
+	{
+		syslog(LOG_ERR,"fopen() \n\r");
+		return -1;	
+	}
+	closelog();
+
 }
+
