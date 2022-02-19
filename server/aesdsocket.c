@@ -69,11 +69,7 @@ int read_file(FILE* fptr1,char** buffer,int* read_data_len)
 			return -1;
 		}
 		status = fread(*buffer, 1, length, fptr);
-		puts("debugging:\n");
-		for(int i = 0; i < length ; i++)
-		{
-			printf("%d\n",(*buffer)[i]);
-		}
+
 		//printf("read file %s length %d",*buffer,length);
 		if(status != length)
 		{
@@ -125,28 +121,6 @@ int main()
 		syslog(LOG_ERR,"listen() failed\n\r");
 		return -1;
 	}
-	syslog(LOG_ERR,"Waiting for connection from client() \n\r");
-	//Accept
-	//struct sockaddr client_addr; 
-	struct sockaddr_in client_addr;
-	memset(&client_addr, 0, sizeof(client_addr));
-
-	socklen_t client_addr_len = 0;
-
-	int accepted_sockfd = 0;
-	accepted_sockfd = accept(sockfd, (struct sockaddr*)&client_addr, &client_addr_len);	
-
-	if(accepted_sockfd == -1)
-	{
-		syslog(LOG_ERR,"accept() \n\r");
-		return -1;
-	}	
-
-
-	//syslog(LOG_ERR,"Accepted connection from %d%d%d%d\n\r",);
-	//printf("Client Adress = %s",inet_ntoa(client_addr.sin_addr));
-	syslog(LOG_ERR,"Accepted connection from %s\n\r",inet_ntoa(client_addr.sin_addr)); //inet_ntoa converts raw address into human readable format
-
 
 	//open file to write the received data from client
 	FILE* fptr = fopen(RECV_FILE_NAME,"w"); //use a+ to open already existing file, w to create new file if not exist 
@@ -155,47 +129,97 @@ int main()
 		syslog(LOG_ERR,"fopen() \n\r");
 		return -1;	
 	}
-
-	//Receive data from client
-	char recv_data[1000];
-	memset(&recv_data[0],0,1000*sizeof(char));
-	status = recv(accepted_sockfd, &recv_data[0],1000,0);
-	if(status == -1)
-	{
-		syslog(LOG_ERR,"recv() failed");
-		return -1;
-	}
-	puts(&recv_data[0]);
-	status = fwrite(&recv_data[0],1,status,fptr);
-
 	fclose(fptr);
 
-	//Read the data from file /var/tmp/aesd_socket
-	
-	char* read_buffer = NULL;
-	int read_data_len = 0;
-	status = read_file(fptr,&read_buffer,&read_data_len);
-	if(status == -1)
+	while(1)
 	{
-		syslog(LOG_ERR, "read_file() failed");
-		return -1;
+		syslog(LOG_ERR,"Waiting for connection from client() \n\r");
+		//Accept
+		//struct sockaddr client_addr; 
+		struct sockaddr_in client_addr;
+		memset(&client_addr, 0, sizeof(client_addr));
+
+		socklen_t client_addr_len = 0;
+
+		int accepted_sockfd = 0;
+		accepted_sockfd = accept(sockfd, (struct sockaddr*)&client_addr, &client_addr_len);	
+
+		if(accepted_sockfd == -1)
+		{
+			syslog(LOG_ERR,"accept() \n\r");
+			return -1;
+		}	
+
+
+		//syslog(LOG_ERR,"Accepted connection from %d%d%d%d\n\r",);
+		//printf("Client Adress = %s",inet_ntoa(client_addr.sin_addr));
+		syslog(LOG_ERR,"Accepted connection from %s\n\r",inet_ntoa(client_addr.sin_addr)); //inet_ntoa converts raw address into human readable format
+
+
+		//open file to write the received data from client
+		FILE* fptr = fopen(RECV_FILE_NAME,"a"); //use a+ to open already existing file, w to create new file if not exist 
+		if(fptr == NULL)
+		{
+			syslog(LOG_ERR,"fopen() \n\r");
+			return -1;	
+		}
+
+		//Receive data from client
+		#define RECV_LEN (100)
+		// char recv_data[RECV_LEN];
+		char* recv_data = malloc(sizeof(char) * RECV_LEN);
+		memset(recv_data,0,RECV_LEN*sizeof(char));
+		puts("\n\rIteration ");
+
+    	int n = 1, total = 0, found = 0;
+		while (!found) 
+		{
+			n = recv(accepted_sockfd, &recv_data[total], sizeof(recv_data) - total - 1, 0);
+			if (n == -1) 
+			{
+				printf("\n\rrecv failed ");
+				return -1;	
+			}
+			total += n;
+			//recv_data[total] = '\0';
+			printf("%d",recv_data[total - 1]);
+			found = (recv_data[total - 1] == '\n')?(1):(0);
+			//found = (strchr(recv_data, '\n') != 0);
+
+    	}
+
+		printf("Received data len: %d\n\r",total);
+		//printf("sizeofarr: %lu\n\r",sizeof(recv_data));
+		
+		status = fwrite(&recv_data[0],1,total,fptr);
+
+		fclose(fptr);
+
+		//Read the data from file /var/tmp/aesd_socket
+		
+		char* read_buffer = NULL;
+		int read_data_len = 0;
+		status = read_file(fptr,&read_buffer,&read_data_len);
+		if(status == -1)
+		{
+			syslog(LOG_ERR, "read_file() failed");
+			return -1;
+		}
+		//printf("Received data %s from clinet length %ld\n\r",recv_data,strlen(recv_data));
+		//printf("Sending data %s to clinet length %d\n\r",read_buffer,read_data_len);
+
+		
+		//Send data to client that was read from file
+		status = send(accepted_sockfd,read_buffer,read_data_len,0);
+		if(status == -1)
+		{
+			syslog(LOG_ERR,"send() failed");
+			return -1;
+		}
+
+
+		closelog();
 	}
-	printf("Received data %s from clinet length %ld\n\r",recv_data,strlen(recv_data));
-	printf("Sending data %s to clinet length %d\n\r",read_buffer,read_data_len);
-
-	
-	//printf("\nsending string length %ld",strlen(read_file_data));
-
-	//Send data to client that was read from file
-	status = send(accepted_sockfd,read_buffer,read_data_len,0);
-	if(status == -1)
-	{
-		syslog(LOG_ERR,"send() failed");
-		return -1;
-	}
-
-
-	closelog();
 
 }
 
