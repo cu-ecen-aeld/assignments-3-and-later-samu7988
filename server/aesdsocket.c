@@ -102,10 +102,10 @@ void sighandler(int signal)
 		//closing any open sockets, 
 		close(sockfd);
 		close(accepted_sockfd);
-		// syslog(LOG_ERR,"Closed connection from %s\n\r",inet_ntoa(client_addr.sin_addr)); //inet_ntoa converts raw address into human readable format
+		syslog(LOG_ERR,"Closed connection from %s\n\r",inet_ntoa(client_addr.sin_addr)); //inet_ntoa converts raw address into human readable format
 
 		// //free malloced buffer
-		// free(read_buffer);
+		free(read_buffer);
 		// free(recv_data);
 
 		//and deleting the file /var/tmp/aesdsocketdata.
@@ -221,7 +221,6 @@ int main()
 				return -1;	
 			}
 			total += n;
-			printf("%d",recv_data[total - 1]);
 			found = (recv_data[total - 1] == '\n')?(1):(0);
 			recv_data = realloc(recv_data, total + recv_len);
 			if(recv_data == NULL)
