@@ -105,13 +105,19 @@ void sighandler(int signal)
 		//closing any open sockets, 
 		close(sockfd);
 		close(accepted_sockfd);
+		
 		syslog(LOG_ERR,"Closed connection from %s\n\r",inet_ntoa(client_addr.sin_addr)); //inet_ntoa converts raw address into human readable format
+
 		//free malloced buffer
-		free(read_buffer);
-		free(recv_data);
+		if(read_buffer != NULL)
+			free(read_buffer);
+		
+		if(recv_data != NULL)
+			free(recv_data);
 
 		//and deleting the file /var/tmp/aesdsocketdata.
 		remove(RECV_FILE_NAME);
+
 		closelog();
 	}
 
@@ -237,7 +243,8 @@ int main()
 
 		
 		status = fwrite(&recv_data[0],1,total,fptr);
-		// free(recv_data);
+		free(recv_data);
+		recv_data = NULL;
 
 		fclose(fptr);
 		fptr = NULL;
@@ -264,7 +271,8 @@ int main()
 			freeaddrinfo(serveinfo);
 			return -1;
 		}
-
+		free(read_buffer);
+		read_buffer = NULL;
 
 	}
 	//
