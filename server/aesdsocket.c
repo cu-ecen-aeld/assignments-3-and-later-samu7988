@@ -106,7 +106,7 @@ void sighandler(int signal)
 
 		// //free malloced buffer
 		free(read_buffer);
-		// free(recv_data);
+		free(recv_data);
 
 		//and deleting the file /var/tmp/aesdsocketdata.
 		//remove(RECV_FILE_NAME);
@@ -233,7 +233,7 @@ int main()
 
 		
 		status = fwrite(&recv_data[0],1,total,fptr);
-		free(recv_data);
+		// free(recv_data);
 
 		fclose(fptr);
 
