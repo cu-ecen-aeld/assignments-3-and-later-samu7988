@@ -165,33 +165,34 @@ int main()
 		}
 
 		//Receive data from client
-		#define RECV_LEN (100)
+		const int recv_len = 100;
 		// char recv_data[RECV_LEN];
-		char* recv_data = malloc(sizeof(char) * RECV_LEN);
-		memset(recv_data,0,RECV_LEN*sizeof(char));
-		puts("\n\rIteration ");
+		char* recv_data = malloc(sizeof(char) * recv_len);
+		memset(recv_data,0,recv_len*sizeof(char));
 
     	int n = 1, total = 0, found = 0;
 		while (!found) 
 		{
-			n = recv(accepted_sockfd, &recv_data[total], sizeof(recv_data) - total - 1, 0);
+			n = recv(accepted_sockfd, &recv_data[total], recv_len, 0);
 			if (n == -1) 
 			{
 				printf("\n\rrecv failed ");
 				return -1;	
 			}
 			total += n;
-			//recv_data[total] = '\0';
 			printf("%d",recv_data[total - 1]);
 			found = (recv_data[total - 1] == '\n')?(1):(0);
-			//found = (strchr(recv_data, '\n') != 0);
-
+			recv_data = realloc(recv_data, total + recv_len);
+			if(recv_data == NULL)
+			{
+				syslog(LOG_ERR,"realloc failed()");
+				return -1;
+			}
     	}
 
-		printf("Received data len: %d\n\r",total);
-		//printf("sizeofarr: %lu\n\r",sizeof(recv_data));
 		
 		status = fwrite(&recv_data[0],1,total,fptr);
+		free(recv_data);
 
 		fclose(fptr);
 
