@@ -96,6 +96,7 @@ void sighandler(int signal)
 {
 	if(signal == SIGINT || signal == SIGTERM)
 	{
+		openlog("AESD_SOCKET", LOG_DEBUG, LOG_DAEMON); //check /var/log/syslog
 
 		//completing any open connection operations, 
 		if(fptr != NULL)
@@ -105,13 +106,13 @@ void sighandler(int signal)
 		close(sockfd);
 		close(accepted_sockfd);
 		syslog(LOG_ERR,"Closed connection from %s\n\r",inet_ntoa(client_addr.sin_addr)); //inet_ntoa converts raw address into human readable format
-
-		// //free malloced buffer
+		//free malloced buffer
 		free(read_buffer);
 		free(recv_data);
 
 		//and deleting the file /var/tmp/aesdsocketdata.
 		remove(RECV_FILE_NAME);
+		closelog();
 	}
 
 }
@@ -265,13 +266,13 @@ int main()
 		}
 
 
-		closelog();
 	}
 	//
 	syslog(LOG_ERR,"Closed connection from %s\n\r",inet_ntoa(client_addr.sin_addr)); //inet_ntoa converts raw address into human readable format
 
 	close(sockfd);
 	close(accepted_sockfd);
+	closelog();
 
 }
 
