@@ -6,6 +6,8 @@
 #include <syslog.h>
 #include <arpa/inet.h>
 #include <stdlib.h>
+#include <unistd.h>
+ #include<signal.h>
 
 #define PORT_NUMBER ("9000")
 #define FAMILY (AF_INET6) //set the AI FAMILY
@@ -14,6 +16,13 @@
 #define IP_ADDR	(0)
 #define MAX_PENDING_CONN_REQUEST  (3)
 #define RECV_FILE_NAME ("/var/tmp/aesd_socketdata")
+
+int sockfd = 0;
+int accepted_sockfd = 0;
+char* read_buffer = NULL;
+char * recv_data = NULL;
+FILE* fptr = NULL;
+struct sockaddr_in client_addr;
 
 int get_address_info(struct addrinfo** serveinfo)
 {
@@ -82,9 +91,33 @@ int read_file(FILE* fptr1,char** buffer,int* read_data_len)
 	return 0;
 }
 
+void sighandler(int signal)
+{
+	if(signal == SIGINT || signal == SIGTERM)
+	{
+
+		//completing any open connection operations, 
+		// fclose(fptr);
+
+		//closing any open sockets, 
+		close(sockfd);
+		close(accepted_sockfd);
+		// syslog(LOG_ERR,"Closed connection from %s\n\r",inet_ntoa(client_addr.sin_addr)); //inet_ntoa converts raw address into human readable format
+
+		// //free malloced buffer
+		// free(read_buffer);
+		// free(recv_data);
+
+		//and deleting the file /var/tmp/aesdsocketdata.
+		//remove(RECV_FILE_NAME);
+	}
+
+}
 
 int main()
 {
+	signal(SIGINT,sighandler);
+	signal(SIGTERM,sighandler);
 	openlog("AESD_SOCKET", LOG_DEBUG, LOG_DAEMON); //check /var/log/syslog
 
 	int status = 0;
@@ -99,10 +132,13 @@ int main()
 	}
 
 	//socket creation
-	int sockfd= socket(FAMILY,SOCKET_TYPE, IP_ADDR);
+	 accepted_sockfd = 0;
+
+	sockfd= socket(FAMILY,SOCKET_TYPE, IP_ADDR);
 	if(sockfd == -1)
 	{
 		syslog(LOG_ERR,"socket() failed\n\r");
+		freeaddrinfo(serveinfo);
 		return -1;
 	}
 	
@@ -111,6 +147,7 @@ int main()
 	if(status == -1 )        
 	{
 		syslog(LOG_ERR,"bind() failed\n\r");
+		freeaddrinfo(serveinfo);
 		return -1;
 	}
 	
@@ -119,6 +156,7 @@ int main()
 	if(status == -1)
 	{
 		syslog(LOG_ERR,"listen() failed\n\r");
+		freeaddrinfo(serveinfo);
 		return -1;
 	}
 
@@ -127,8 +165,10 @@ int main()
 	if(fptr == NULL)
 	{
 		syslog(LOG_ERR,"fopen() \n\r");
+		freeaddrinfo(serveinfo);
 		return -1;	
 	}
+
 	fclose(fptr);
 
 	while(1)
@@ -136,17 +176,16 @@ int main()
 		syslog(LOG_ERR,"Waiting for connection from client() \n\r");
 		//Accept
 		//struct sockaddr client_addr; 
-		struct sockaddr_in client_addr;
 		memset(&client_addr, 0, sizeof(client_addr));
-
 		socklen_t client_addr_len = 0;
 
-		int accepted_sockfd = 0;
+
 		accepted_sockfd = accept(sockfd, (struct sockaddr*)&client_addr, &client_addr_len);	
 
 		if(accepted_sockfd == -1)
 		{
 			syslog(LOG_ERR,"accept() \n\r");
+			freeaddrinfo(serveinfo);
 			return -1;
 		}	
 
@@ -157,17 +196,18 @@ int main()
 
 
 		//open file to write the received data from client
-		FILE* fptr = fopen(RECV_FILE_NAME,"a"); //use a+ to open already existing file, w to create new file if not exist 
+		fptr = fopen(RECV_FILE_NAME,"a"); //use a+ to open already existing file, w to create new file if not exist 
 		if(fptr == NULL)
 		{
 			syslog(LOG_ERR,"fopen() \n\r");
+			freeaddrinfo(serveinfo);
 			return -1;	
 		}
 
 		//Receive data from client
 		const int recv_len = 100;
 		// char recv_data[RECV_LEN];
-		char* recv_data = malloc(sizeof(char) * recv_len);
+		recv_data = malloc(sizeof(char) * recv_len);
 		memset(recv_data,0,recv_len*sizeof(char));
 
     	int n = 1, total = 0, found = 0;
@@ -176,7 +216,8 @@ int main()
 			n = recv(accepted_sockfd, &recv_data[total], recv_len, 0);
 			if (n == -1) 
 			{
-				printf("\n\rrecv failed ");
+				syslog(LOG_ERR,"\n\rrecv failed ");
+				freeaddrinfo(serveinfo);
 				return -1;	
 			}
 			total += n;
@@ -186,6 +227,7 @@ int main()
 			if(recv_data == NULL)
 			{
 				syslog(LOG_ERR,"realloc failed()");
+				freeaddrinfo(serveinfo);
 				return -1;
 			}
     	}
@@ -198,12 +240,13 @@ int main()
 
 		//Read the data from file /var/tmp/aesd_socket
 		
-		char* read_buffer = NULL;
+		read_buffer = NULL;
 		int read_data_len = 0;
 		status = read_file(fptr,&read_buffer,&read_data_len);
 		if(status == -1)
 		{
 			syslog(LOG_ERR, "read_file() failed");
+			freeaddrinfo(serveinfo);
 			return -1;
 		}
 		//printf("Received data %s from clinet length %ld\n\r",recv_data,strlen(recv_data));
@@ -215,6 +258,7 @@ int main()
 		if(status == -1)
 		{
 			syslog(LOG_ERR,"send() failed");
+			freeaddrinfo(serveinfo);
 			return -1;
 		}
 
@@ -222,6 +266,10 @@ int main()
 		closelog();
 	}
 	//
+	syslog(LOG_ERR,"Closed connection from %s\n\r",inet_ntoa(client_addr.sin_addr)); //inet_ntoa converts raw address into human readable format
+
+	close(sockfd);
+	close(accepted_sockfd);
 
 }
 
