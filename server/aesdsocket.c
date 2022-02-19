@@ -7,7 +7,8 @@
 #include <arpa/inet.h>
 #include <stdlib.h>
 #include <unistd.h>
- #include<signal.h>
+#include<signal.h>
+#include<errno.h>
 
 #define PORT_NUMBER ("9000")
 #define FAMILY (AF_INET6) //set the AI FAMILY
@@ -23,6 +24,7 @@ char* read_buffer = NULL;
 char * recv_data = NULL;
 FILE* fptr = NULL;
 struct sockaddr_in client_addr;
+struct addrinfo* serveinfo = NULL;
 
 int get_address_info(struct addrinfo** serveinfo)
 {
@@ -96,7 +98,8 @@ void sighandler(int signal)
 {
 	if(signal == SIGINT || signal == SIGTERM)
 	{
-		openlog("AESD_SOCKET", LOG_DEBUG, LOG_DAEMON); //check /var/log/syslog
+		// if(serveinfo != NULL)
+		// 	freeaddrinfo(serveinfo);
 
 		//completing any open connection operations, 
 		if(fptr != NULL)
@@ -123,16 +126,28 @@ void sighandler(int signal)
 
 }
 
-int main()
+void cleanup()
+{
+	sighandler(0xff);
+}
+
+int main(int argc ,char* argv[])
 {
 	signal(SIGINT,sighandler);
 	signal(SIGTERM,sighandler);
 	openlog("AESD_SOCKET", LOG_DEBUG, LOG_DAEMON); //check /var/log/syslog
 
 	int status = 0;
-		
+	
+	if(argc > 2)
+	{
+		syslog(LOG_ERR,"Number of arguments passed are greater than 2");
+		return -1;
+	}
+
+
 	//get address info	
-	struct addrinfo* serveinfo = NULL;
+	serveinfo = NULL;
 	status = get_address_info(&serveinfo);
 	if(status != 0)
 	{
@@ -151,15 +166,40 @@ int main()
 		return -1;
 	}
 	
+	status = setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR| SO_REUSEPORT, &(int){1}, sizeof(int));
+	if(status == -1)
+	{
+		syslog(LOG_ERR,"setsockopt failed");
+		return -1;
+	}
 	//After creation of the socket, bind function binds the socket to address and port number
 	status = bind(sockfd, serveinfo->ai_addr,  serveinfo->ai_addrlen);
 	if(status == -1 )        
 	{
 		syslog(LOG_ERR,"bind() failed\n\r");
+		printf("bind error: %s\n",strerror(errno));
 		freeaddrinfo(serveinfo);
 		return -1;
 	}
 	
+	//Daemonize the process after bind is successfull
+	if(argc >= 2 && argv[1] != NULL && (strcmp(argv[1],"-d") == 0))
+	{
+	/* Reference: https://stackoverflow.com/questions/2966886/is-there-a-difference-calling-daemon0-0-from-within-a-program-and-launching-a
+    	Re-parents the process to init by forking and then exiting the parent. Look in the ps list and you'll see that daemons are owned by PID 1.
+    	Calls setsid().
+    	Changes directory to /.
+    	Redirects standard in, out, and error to /dev/null.
+	*/
+
+		status = daemon(0,0);
+		if(status == -1)
+		{
+			syslog(LOG_ERR,"daemon failed");
+			return -1;
+		}
+	}
+
 	//Listen
 	status = listen(sockfd,MAX_PENDING_CONN_REQUEST) ;
 	if(status == -1)
@@ -273,14 +313,11 @@ int main()
 		}
 		free(read_buffer);
 		read_buffer = NULL;
-
+		cleanup();
 	}
 	//
-	syslog(LOG_ERR,"Closed connection from %s\n\r",inet_ntoa(client_addr.sin_addr)); //inet_ntoa converts raw address into human readable format
 
-	close(sockfd);
-	close(accepted_sockfd);
-	closelog();
+
 
 }
 
