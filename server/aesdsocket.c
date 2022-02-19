@@ -1,3 +1,14 @@
+/********************************************************************
+ * @file aesdsocket.c
+ * @brief Server implementation for socket IPC
+ * @Description : Connects with client, receives data, writes to file and send data to client
+ * @author Sayali Mule
+ * @date  February 19, 2021
+ * @Reference:
+ **********************************************************************/
+//***********************************************************************************
+//                              Include files
+//***********************************************************************************
 #include<stdio.h>
 #include<sys/socket.h>
 #include<sys/types.h>
@@ -10,6 +21,9 @@
 #include<signal.h>
 #include<errno.h>
 
+//***********************************************************************************
+//                              Macros
+//***********************************************************************************
 #define PORT_NUMBER ("9000")
 #define FAMILY (AF_INET6) //set the AI FAMILY
 #define SOCKET_TYPE (SOCK_STREAM) //set to TCP
@@ -18,6 +32,9 @@
 #define MAX_PENDING_CONN_REQUEST  (3)
 #define RECV_FILE_NAME ("/var/tmp/aesd_socketdata")
 
+//***********************************************************************************
+//                              Global variables
+//***********************************************************************************
 int sockfd = 0;
 int accepted_sockfd = 0;
 char* read_buffer = NULL;
@@ -26,6 +43,17 @@ FILE* fptr = NULL;
 struct sockaddr_in client_addr;
 struct addrinfo* serveinfo = NULL;
 
+//***********************************************************************************
+//                              Function definition
+//***********************************************************************************
+
+ /*------------------------------------------------------------------------------------------------------------------------------------*/
+ /*
+ @brief:Populates the serveinfo pointer
+ @param: serveinfo: Pointer to structure used during binding 
+ @return: returns -1 on failure, 0 on success
+ */
+ /*-----------------------------------------------------------------------------------------------------------------------------*/
 int get_address_info(struct addrinfo** serveinfo)
 {
 	int status = 0;
@@ -40,8 +68,15 @@ int get_address_info(struct addrinfo** serveinfo)
 	return status;
 
 }
-
-int read_file(FILE* fptr1,char** buffer,int* read_data_len)
+/*------------------------------------------------------------------------------------------------------------------------------------*/
+ /*
+ @brief:Reads files on server end
+ @param: buffer: pointer in which files contents are read
+ #param: read_data_len: Populates the length of file 
+ @return: returns -1 on failure, 0 on success
+ */
+ /*-----------------------------------------------------------------------------------------------------------------------------*/
+int read_file(char** buffer,int* read_data_len)
 {
 	
 	if(buffer == NULL)
@@ -94,12 +129,18 @@ int read_file(FILE* fptr1,char** buffer,int* read_data_len)
 	return 0;
 }
 
+/*------------------------------------------------------------------------------------------------------------------------------------*/
+ /*
+ @brief:Handler to signal
+ @param: signal: signal number
+ @return: None
+ */
+ /*-----------------------------------------------------------------------------------------------------------------------------*/
 void sighandler(int signal)
 {
 	if(signal == SIGINT || signal == SIGTERM)
 	{
-		// if(serveinfo != NULL)
-		// 	freeaddrinfo(serveinfo);
+
 
 		//completing any open connection operations, 
 		if(fptr != NULL)
@@ -126,18 +167,43 @@ void sighandler(int signal)
 
 }
 
+/*------------------------------------------------------------------------------------------------------------------------------------*/
+ /*
+ @brief: Closes file handler, socket and does cleanup
+ @param: None
+ @return: None
+ */
+ /*-----------------------------------------------------------------------------------------------------------------------------*/
 void cleanup()
 {
-	sighandler(0xff);
+	sighandler(0xff); //0xff is dummy byte
 }
 
+/*------------------------------------------------------------------------------------------------------------------------------------*/
+ /*
+ @brief: Main driver function
+ @param: argc : Count of argument passed from command line
+ @param: argv: Array of pointer to command line arguments
+ @return: returns -1 on failure, 0 on success
+ */
+ /*-----------------------------------------------------------------------------------------------------------------------------*/
 int main(int argc ,char* argv[])
 {
-	signal(SIGINT,sighandler);
-	signal(SIGTERM,sighandler);
+
 	openlog("AESD_SOCKET", LOG_DEBUG, LOG_DAEMON); //check /var/log/syslog
 
 	int status = 0;
+	if(signal(SIGINT,sighandler) == SIG_ERR)
+	{
+		syslog(LOG_ERR,"SIGINT registration failed");
+		return -1;
+	}
+
+	if(signal(SIGTERM,sighandler) == SIG_ERR)
+	{
+		syslog(LOG_ERR,"SIGTERM registration failed");
+		return -1;
+	}
 	
 	if(argc > 2)
 	{
@@ -292,7 +358,7 @@ int main(int argc ,char* argv[])
 		
 		read_buffer = NULL;
 		int read_data_len = 0;
-		status = read_file(fptr,&read_buffer,&read_data_len);
+		status = read_file(&read_buffer,&read_data_len);
 		if(status == -1)
 		{
 			syslog(LOG_ERR, "read_file() failed");
