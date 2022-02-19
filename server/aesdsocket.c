@@ -88,6 +88,7 @@ int read_file(FILE* fptr1,char** buffer,int* read_data_len)
 		*read_data_len = status;
 	}
 	fclose(fptr);
+	fptr = NULL;
 	return 0;
 }
 
@@ -97,7 +98,8 @@ void sighandler(int signal)
 	{
 
 		//completing any open connection operations, 
-		// fclose(fptr);
+		if(fptr != NULL)
+			fclose(fptr);
 
 		//closing any open sockets, 
 		close(sockfd);
@@ -109,7 +111,7 @@ void sighandler(int signal)
 		free(recv_data);
 
 		//and deleting the file /var/tmp/aesdsocketdata.
-		//remove(RECV_FILE_NAME);
+		remove(RECV_FILE_NAME);
 	}
 
 }
@@ -170,6 +172,7 @@ int main()
 	}
 
 	fclose(fptr);
+	fptr = NULL;
 
 	while(1)
 	{
@@ -236,7 +239,7 @@ int main()
 		// free(recv_data);
 
 		fclose(fptr);
-
+		fptr = NULL;
 		//Read the data from file /var/tmp/aesd_socket
 		
 		read_buffer = NULL;
