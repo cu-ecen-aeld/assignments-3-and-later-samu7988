@@ -1,5 +1,5 @@
 #make all or make => then gcc will be used
-#make CROSS_COMPILE=arch-linux-gnu-
+#make CROSS_COMPILE=aarch64-none-linux-gnu-
 
 CC = $(CROSS_COMPILE)gcc
 CFLAGS = -Wall -Werror
