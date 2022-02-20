@@ -261,6 +261,7 @@ int main(int argc ,char* argv[])
 		status = daemon(0,0);
 		if(status == -1)
 		{
+			printf("Daemon failed with error: %s\n\r",strerror(errno));
 			syslog(LOG_ERR,"daemon failed");
 			return -1;
 		}
