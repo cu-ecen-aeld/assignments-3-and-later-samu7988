@@ -54,7 +54,6 @@ typedef struct
 {
 	pthread_t thread_id;
 	int accepted_sockfd;
-	pthread_mutex_t*  mutex_lock; 
 	bool is_thread_complete;
 }pthread_params_t;
 
@@ -192,6 +191,7 @@ void timer_handler(int signal)
 {
 	if(signal == SIGALRM)
 	{
+		int status = 0;
 		//Get time in seconds
 		time_t t ;
     	time(&t);
@@ -208,7 +208,23 @@ void timer_handler(int signal)
     	// using strftime to display time
 		char formatted_time[50];
     	strftime(formatted_time, sizeof(formatted_time), "timestamp:%d.%b.%y - %k:%M:%S\n", tmp);
+
+		//applying a mutex lock to protect file from race condition by multiple client 
+		status = pthread_mutex_lock(&mutex_lock);
+		if(status)
+		{
+			syslog(LOG_ERR,"pthread_mutex_lock failed");
+			exit(1);
+		}
 		//Write to file
+
+		//Unlock the mutex
+		status = pthread_mutex_unlock(&mutex_lock);
+		if(status)
+		{
+			syslog(LOG_ERR,"pthread_mutex_unlock failed");
+			exit(1);
+		}
 	}
 }
 
@@ -261,7 +277,7 @@ void cleanup()
 	printf("Before Locking mutex\n\r");
 
 	//applying a mutex lock to protect file from race condition by multiple client 
-	status = pthread_mutex_lock(cb_params->mutex_lock);
+	status = pthread_mutex_lock(&mutex_lock);
 	if(status)
 	{
 		syslog(LOG_ERR,"pthread_mutex_lock failed");
@@ -341,7 +357,7 @@ void cleanup()
 	
 
 	//unlock the mutex 
-	status = pthread_mutex_unlock(cb_params->mutex_lock);
+	status = pthread_mutex_unlock(&mutex_lock);
 	if(status){
 		syslog(LOG_ERR,"pthread_mutex_unlock failed");
 		exit(1);
@@ -575,7 +591,6 @@ int main(int argc ,char* argv[])
 
 		data_node_p->thread_params.accepted_sockfd = accepted_sockfd;
 		data_node_p->thread_params.is_thread_complete = 0;
-		data_node_p->thread_params.mutex_lock = &mutex_lock;
 
 		status = pthread_create(&(data_node_p->thread_params.thread_id),NULL,thread_callback,&(data_node_p->thread_params));
 		if(status != 0)
