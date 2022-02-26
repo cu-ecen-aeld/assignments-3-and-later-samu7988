@@ -135,7 +135,6 @@ int read_file(char** buffer,int* read_data_len)
 		}
 		status = fread(*buffer, 1, length, fptr);
 
-		//printf("read file %s length %d",*buffer,length);
 		if(status != length)
 		{
 			syslog(LOG_ERR, "read_file fread failed expected length%d actual length%d",length, status);
@@ -207,7 +206,8 @@ void timer_handler(int signal)
 		//Convert time into string
     	// using strftime to display time
 		char formatted_time[50];
-    	strftime(formatted_time, sizeof(formatted_time), "timestamp:%d.%b.%y - %k:%M:%S\n", tmp);
+		int timer_string_len = 0;
+    	timer_string_len = strftime(formatted_time, sizeof(formatted_time), "timestamp:%d.%b.%y - %k:%M:%S\n", tmp);
 
 		//applying a mutex lock to protect file from race condition by multiple client 
 		status = pthread_mutex_lock(&mutex_lock);
@@ -217,7 +217,20 @@ void timer_handler(int signal)
 			exit(1);
 		}
 		//Write to file
+		//open file to write the received data from client
+		fptr = fopen(RECV_FILE_NAME,"a"); //use a+ to open already existing file, w to create new file if not exist 
+		if(fptr == NULL)
+		{
+			syslog(LOG_ERR,"fopen() \n\r");
+			freeaddrinfo(serveinfo);
+			exit(1);
+		}
 
+		//write to file at server end /var/tmp/aesd_socket
+		status = fwrite(&formatted_time[0],1,timer_string_len,fptr);
+		
+		fclose(fptr);
+		fptr = NULL;
 		//Unlock the mutex
 		status = pthread_mutex_unlock(&mutex_lock);
 		if(status)
@@ -265,7 +278,6 @@ void cleanup()
  /*-----------------------------------------------------------------------------------------------------------------------------*/
  void* thread_callback(void* thread_param)
  {
-	 printf("Thread called\n\r");
 	 int status = 0;
 	if(thread_param == NULL)
 	{
@@ -274,7 +286,6 @@ void cleanup()
 	}
 
 	pthread_params_t* cb_params = (pthread_params_t *) thread_param;
-	printf("Before Locking mutex\n\r");
 
 	//applying a mutex lock to protect file from race condition by multiple client 
 	status = pthread_mutex_lock(&mutex_lock);
@@ -287,7 +298,6 @@ void cleanup()
 	const int recv_len = 100;
 	recv_data = malloc(sizeof(char) * recv_len);
 	memset(recv_data,0,recv_len*sizeof(char));
-	 printf("Before receiving data \n\r");
 
 	int n = 1, total = 0, found = 0;
 	while (!found) 
@@ -403,7 +413,6 @@ int open_socket_then_bind()
 	if(status == -1 )        
 	{
 		syslog(LOG_ERR,"bind() failed\n\r");
-		printf("bind error: %s\n",strerror(errno));
 		freeaddrinfo(serveinfo);
 		return -1;
 	}
@@ -447,7 +456,6 @@ int daemonise_process(int argc ,char* argv[])
 		status = daemon(0,0);
 		if(status == -1)
 		{
-			printf("Daemon failed with error: %s\n\r",strerror(errno));
 			syslog(LOG_ERR,"daemon failed");
 			return -1;
 		}
@@ -569,9 +577,7 @@ int main(int argc ,char* argv[])
 		memset(&client_addr, 0, sizeof(client_addr));
 		socklen_t client_addr_len = 0;
 
-		printf("before accept\n\r");
 		accepted_sockfd = accept(sockfd, (struct sockaddr*)&client_addr, &client_addr_len);	
-		printf("After accept\n\r");
 		if(accepted_sockfd == -1)
 		{
 			syslog(LOG_ERR,"accept() \n\r");
