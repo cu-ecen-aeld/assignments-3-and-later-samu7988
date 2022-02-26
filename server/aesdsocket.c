@@ -23,6 +23,7 @@
 #include <sys/queue.h>
 #include <stdbool.h>
 #include <pthread.h>
+#include <sys/time.h>
 
 //***********************************************************************************
 //                              Macros
@@ -34,6 +35,7 @@
 #define IP_ADDR	(0)
 #define MAX_PENDING_CONN_REQUEST  (10)
 #define RECV_FILE_NAME ("/var/tmp/aesd_socketdata")
+#define TEN_SECOND (10)
 
 //***********************************************************************************
 //                              Global variables
@@ -45,6 +47,8 @@ char * recv_data = NULL;
 FILE* fptr = NULL;
 struct sockaddr_in client_addr;
 struct addrinfo* serveinfo = NULL;
+pthread_mutex_t mutex_lock = PTHREAD_MUTEX_INITIALIZER;
+
 
 typedef struct 
 {
@@ -183,6 +187,48 @@ void sighandler(int signal)
 
 }
 
+//Reference: https://www.geeksforgeeks.org/strftime-function-in-c/
+void timer_handler(int signal)
+{
+	if(signal == SIGALRM)
+	{
+		//Get time in seconds
+		time_t t ;
+    	time(&t);
+		
+		//Convert time in seconds to proper formatted time
+  		//localtime() uses the time pointed by t ,
+    	// to fill a tmp structure with the
+    	// values that represent the
+    	// corresponding local time.
+   		struct tm *tmp = NULL;
+    	tmp = localtime(&t);
+
+		//Convert time into string
+    	// using strftime to display time
+		char formatted_time[50];
+    	strftime(formatted_time, sizeof(formatted_time), "timestamp:%d.%b.%y - %k:%M:%S\n", tmp);
+		//Write to file
+	}
+}
+
+int init_timer(time_t time_period)
+{
+	int status = 0;
+	struct itimerval timer_attribute;
+	timer_attribute.it_interval.tv_sec = time_period; //timer interval of 10 secs
+	timer_attribute.it_interval.tv_usec = 0;
+	timer_attribute.it_value.tv_sec = time_period; //time expiration of 10 secs
+	timer_attribute.it_value.tv_usec = 0;
+
+	status = setitimer(ITIMER_REAL, &timer_attribute, NULL);
+	if(status == -1){
+		syslog(LOG_ERR,"setitimer() failed");
+		return -1;
+	}
+
+	return 0;
+}
 /*------------------------------------------------------------------------------------------------------------------------------------*/
  /*
  @brief: Closes file handler, socket and does cleanup
@@ -361,6 +407,12 @@ int register_signal_handler()
 		syslog(LOG_ERR,"SIGTERM registration failed");
 		return -1;
 	}
+
+	if(signal(SIGALRM,timer_handler) == SIG_ERR)
+	{
+		syslog(LOG_ERR,"SIGALARM failed");
+		return -1;
+	}
 }
 
 int daemonise_process(int argc ,char* argv[])
@@ -404,6 +456,20 @@ int create_new_file()
 
 	return 0;
 
+}
+
+
+int initialise_mutex_lock()
+{
+	int status = 0;
+	
+	status  = pthread_mutex_init(&mutex_lock, NULL);
+	if(status != 0)
+	{	
+		syslog(LOG_ERR,"pthread_mutex_init failed");
+		return -1;
+	}
+	return 0;
 }
 /*------------------------------------------------------------------------------------------------------------------------------------*/
  /*
@@ -453,19 +519,22 @@ int main(int argc ,char* argv[])
 		return -1;
 	}
 
-	
-	slist_data_t* data_node_p = NULL;
 	SLIST_HEAD(slisthead, slist_data_s) head;
 	SLIST_INIT(&head);
+
+	status = initialise_mutex_lock();
 	
-	pthread_mutex_t mutex_lock = PTHREAD_MUTEX_INITIALIZER;
-	status  = pthread_mutex_init(&mutex_lock, NULL);
-	if(status != 0)
-	{	
-		syslog(LOG_ERR,"pthread_mutex_init failed");
+	
+	slist_data_t* data_node_p = NULL;
+
+
+	status = init_timer(TEN_SECOND);
+	if(status == -1)
+	{
+		syslog(LOG_ERR,"init_timer() failed");
 		return -1;
 	}
-	
+
 	while(1)
 	{
 		//Listen
