@@ -20,6 +20,9 @@
 #include <unistd.h>
 #include<signal.h>
 #include<errno.h>
+#include <sys/queue.h>
+#include <stdbool.h>
+#include <pthread.h>
 
 //***********************************************************************************
 //                              Macros
@@ -29,7 +32,7 @@
 #define SOCKET_TYPE (SOCK_STREAM) //set to TCP
 #define FLAGS (AI_PASSIVE)
 #define IP_ADDR	(0)
-#define MAX_PENDING_CONN_REQUEST  (3)
+#define MAX_PENDING_CONN_REQUEST  (10)
 #define RECV_FILE_NAME ("/var/tmp/aesd_socketdata")
 
 //***********************************************************************************
@@ -43,10 +46,23 @@ FILE* fptr = NULL;
 struct sockaddr_in client_addr;
 struct addrinfo* serveinfo = NULL;
 
+typedef struct 
+{
+	pthread_t thread_id;
+	int accepted_sockfd;
+	pthread_mutex_t*  mutex_lock; 
+	bool is_thread_complete;
+}pthread_params_t;
+
+typedef struct slist_data_s
+{
+	pthread_params_t thread_params; //data
+	SLIST_ENTRY(slist_data_s) entries ; //Pointer to next node
+}slist_data_t;
+
 //***********************************************************************************
 //                              Function definition
 //***********************************************************************************
-
  /*------------------------------------------------------------------------------------------------------------------------------------*/
  /*
  @brief:Populates the serveinfo pointer
@@ -178,40 +194,122 @@ void cleanup()
 {
 	sighandler(0xff); //0xff is dummy byte
 }
-
-/*------------------------------------------------------------------------------------------------------------------------------------*/
+ /*------------------------------------------------------------------------------------------------------------------------------------*/
  /*
- @brief: Main driver function
- @param: argc : Count of argument passed from command line
- @param: argv: Array of pointer to command line arguments
- @return: returns -1 on failure, 0 on success
+ @brief: Callback function that gets called when pthread is created
+ @param: thread_param: Input structure to the callback function 
+ @return: void* 
  */
  /*-----------------------------------------------------------------------------------------------------------------------------*/
-int main(int argc ,char* argv[])
-{
-
-	openlog("AESD_SOCKET", LOG_DEBUG, LOG_DAEMON); //check /var/log/syslog
-
-	int status = 0;
-	if(signal(SIGINT,sighandler) == SIG_ERR)
+ void* thread_callback(void* thread_param)
+ {
+	 printf("Thread called\n\r");
+	 int status = 0;
+	if(thread_param == NULL)
 	{
-		syslog(LOG_ERR,"SIGINT registration failed");
-		return -1;
+		syslog(LOG_ERR,"thread_param is NULL");
+		exit(1);
 	}
 
-	if(signal(SIGTERM,sighandler) == SIG_ERR)
+	pthread_params_t* cb_params = (pthread_params_t *) thread_param;
+	printf("Before Locking mutex\n\r");
+
+	//applying a mutex lock to protect file from race condition by multiple client 
+	status = pthread_mutex_lock(cb_params->mutex_lock);
+	if(status)
 	{
-		syslog(LOG_ERR,"SIGTERM registration failed");
-		return -1;
+		syslog(LOG_ERR,"pthread_mutex_lock failed");
+		exit(1);
 	}
+	//Receive data from client
+	const int recv_len = 100;
+	recv_data = malloc(sizeof(char) * recv_len);
+	memset(recv_data,0,recv_len*sizeof(char));
+	 printf("Before receiving data \n\r");
+
+	int n = 1, total = 0, found = 0;
+	while (!found) 
+	{	
+
+		//reading from the client
+		n = recv(cb_params->accepted_sockfd, &recv_data[total], recv_len, 0);
+		if (n == -1) 
+		{
+			syslog(LOG_ERR,"\n\rrecv failed ");
+			freeaddrinfo(serveinfo);
+			exit(1);
+		}
+		total += n;
+		found = (recv_data[total - 1] == '\n')?(1):(0);
+		recv_data = realloc(recv_data, total + recv_len);
+		if(recv_data == NULL)
+		{
+			syslog(LOG_ERR,"realloc failed()");
+			freeaddrinfo(serveinfo);
+			exit(1);
+		}
+	}
+
+
+	//open file to write the received data from client
+	fptr = fopen(RECV_FILE_NAME,"a"); //use a+ to open already existing file, w to create new file if not exist 
+	if(fptr == NULL)
+	{
+		syslog(LOG_ERR,"fopen() \n\r");
+		freeaddrinfo(serveinfo);
+		exit(1);
+	}
+
+	//write to file at server end /var/tmp/aesd_socket
+	status = fwrite(&recv_data[0],1,total,fptr);
+	free(recv_data);
+	recv_data = NULL;
+
+	fclose(fptr);
+	fptr = NULL;
 	
-	if(argc > 2)
+	//Read the data from file /var/tmp/aesd_socket
+	read_buffer = NULL;
+	int read_data_len = 0;
+	status = read_file(&read_buffer,&read_data_len);
+	if(status == -1)
 	{
-		syslog(LOG_ERR,"Number of arguments passed are greater than 2");
-		return -1;
+		syslog(LOG_ERR, "read_file() failed");
+		freeaddrinfo(serveinfo);
+		exit(1);
+	}
+	//printf("Received data %s from clinet length %ld\n\r",recv_data,strlen(recv_data));
+	//printf("Sending data %s to clinet length %d\n\r",read_buffer,read_data_len);
+
+	
+	//Send data to client that was read from file
+	status = send(cb_params->accepted_sockfd,read_buffer,read_data_len,0);
+	if(status == -1)
+	{
+		syslog(LOG_ERR,"send() failed");
+		freeaddrinfo(serveinfo);
+		exit(1);
+	}
+	free(read_buffer);
+	read_buffer = NULL;
+	
+
+	//unlock the mutex 
+	status = pthread_mutex_unlock(cb_params->mutex_lock);
+	if(status){
+		syslog(LOG_ERR,"pthread_mutex_unlock failed");
+		exit(1);
 	}
 
+	cb_params->is_thread_complete = true;
+	close(cb_params->accepted_sockfd);
 
+	return cb_params;
+ }
+
+int open_socket_then_bind()
+{
+	int status = 0;
 	//get address info	
 	serveinfo = NULL;
 	status = get_address_info(&serveinfo);
@@ -222,7 +320,7 @@ int main(int argc ,char* argv[])
 	}
 
 	//socket creation
-	 accepted_sockfd = 0;
+	accepted_sockfd = 0;
 
 	sockfd= socket(FAMILY,SOCKET_TYPE, IP_ADDR);
 	if(sockfd == -1)
@@ -247,6 +345,59 @@ int main(int argc ,char* argv[])
 		freeaddrinfo(serveinfo);
 		return -1;
 	}
+	return 0;
+}
+
+int register_signal_handler()
+{
+	if(signal(SIGINT,sighandler) == SIG_ERR)
+	{
+		syslog(LOG_ERR,"SIGINT registration failed");
+		return -1;
+	}
+
+	if(signal(SIGTERM,sighandler) == SIG_ERR)
+	{
+		syslog(LOG_ERR,"SIGTERM registration failed");
+		return -1;
+	}
+}
+/*------------------------------------------------------------------------------------------------------------------------------------*/
+ /*
+ @brief: Main driver function
+ @param: argc : Count of argument passed from command line
+ @param: argv: Array of pointer to command line arguments
+ @return: returns -1 on failure, 0 on success
+ */
+ /*-----------------------------------------------------------------------------------------------------------------------------*/
+int main(int argc ,char* argv[])
+{
+	if(argc > 2)
+	{
+		syslog(LOG_ERR,"Number of arguments passed are greater than 2");
+		return -1;
+	}
+	
+	openlog("AESD_SOCKET", LOG_DEBUG, LOG_DAEMON); //check /var/log/syslog
+
+	int status = 0;
+
+	status = register_signal_handler();
+	if(status == -1)
+	{
+		syslog(LOG_ERR,"register_signal_handler");
+		return -1;
+	}
+	
+
+
+	status = open_socket_then_bind();
+	if(status == -1)
+	{
+		syslog(LOG_ERR,"open_socket_then_bind failed");
+		return -1;
+	}
+	
 	
 	//Daemonize the process after bind is successfull
 	if(argc >= 2 && argv[1] != NULL && (strcmp(argv[1],"-d") == 0))
@@ -267,14 +418,7 @@ int main(int argc ,char* argv[])
 		}
 	}
 
-	//Listen
-	status = listen(sockfd,MAX_PENDING_CONN_REQUEST) ;
-	if(status == -1)
-	{
-		syslog(LOG_ERR,"listen() failed\n\r");
-		freeaddrinfo(serveinfo);
-		return -1;
-	}
+
 
 	//open file to write the received data from client
 	FILE* fptr = fopen(RECV_FILE_NAME,"w"); //use a+ to open already existing file, w to create new file if not exist 
@@ -287,104 +431,91 @@ int main(int argc ,char* argv[])
 
 	fclose(fptr);
 	fptr = NULL;
-
+	
+	slist_data_t* data_node_p = NULL;
+	SLIST_HEAD(slisthead, slist_data_s) head;
+	SLIST_INIT(&head);
+	
+	pthread_mutex_t mutex_lock = PTHREAD_MUTEX_INITIALIZER;
+	status  = pthread_mutex_init(&mutex_lock, NULL);
+	if(status != 0)
+	{	
+		syslog(LOG_ERR,"pthread_mutex_init failed");
+		return -1;
+	}
+	
 	while(1)
 	{
+		//Listen
+		status = listen(sockfd,MAX_PENDING_CONN_REQUEST) ;
+		if(status == -1)
+		{
+			syslog(LOG_ERR,"listen() failed\n\r");
+			freeaddrinfo(serveinfo);
+			return -1;
+		}
+
 		syslog(LOG_ERR,"Waiting for connection from client() \n\r");
+		
 		//Accept
 		//struct sockaddr client_addr; 
 		memset(&client_addr, 0, sizeof(client_addr));
 		socklen_t client_addr_len = 0;
 
-
+		printf("before accept\n\r");
 		accepted_sockfd = accept(sockfd, (struct sockaddr*)&client_addr, &client_addr_len);	
-
+		printf("After accept\n\r");
 		if(accepted_sockfd == -1)
 		{
 			syslog(LOG_ERR,"accept() \n\r");
 			freeaddrinfo(serveinfo);
 			return -1;
 		}	
-
-
-		//syslog(LOG_ERR,"Accepted connection from %d%d%d%d\n\r",);
-		//printf("Client Adress = %s",inet_ntoa(client_addr.sin_addr));
 		syslog(LOG_ERR,"Accepted connection from %s\n\r",inet_ntoa(client_addr.sin_addr)); //inet_ntoa converts raw address into human readable format
 
-
-		//open file to write the received data from client
-		fptr = fopen(RECV_FILE_NAME,"a"); //use a+ to open already existing file, w to create new file if not exist 
-		if(fptr == NULL)
-		{
-			syslog(LOG_ERR,"fopen() \n\r");
-			freeaddrinfo(serveinfo);
-			return -1;	
-		}
-
-		//Receive data from client
-		const int recv_len = 100;
-		// char recv_data[RECV_LEN];
-		recv_data = malloc(sizeof(char) * recv_len);
-		memset(recv_data,0,recv_len*sizeof(char));
-
-    	int n = 1, total = 0, found = 0;
-		while (!found) 
-		{
-			n = recv(accepted_sockfd, &recv_data[total], recv_len, 0);
-			if (n == -1) 
-			{
-				syslog(LOG_ERR,"\n\rrecv failed ");
-				freeaddrinfo(serveinfo);
-				return -1;	
-			}
-			total += n;
-			found = (recv_data[total - 1] == '\n')?(1):(0);
-			recv_data = realloc(recv_data, total + recv_len);
-			if(recv_data == NULL)
-			{
-				syslog(LOG_ERR,"realloc failed()");
-				freeaddrinfo(serveinfo);
-				return -1;
-			}
-    	}
-
+		//Create threads
+		data_node_p = malloc(sizeof(slist_data_t));
 		
-		status = fwrite(&recv_data[0],1,total,fptr);
-		free(recv_data);
-		recv_data = NULL;
-
-		fclose(fptr);
-		fptr = NULL;
-		//Read the data from file /var/tmp/aesd_socket
-		
-		read_buffer = NULL;
-		int read_data_len = 0;
-		status = read_file(&read_buffer,&read_data_len);
-		if(status == -1)
+		if(data_node_p == NULL)
 		{
-			syslog(LOG_ERR, "read_file() failed");
-			freeaddrinfo(serveinfo);
+			syslog(LOG_ERR,"main() data_node_p is NULL");
 			return -1;
 		}
-		//printf("Received data %s from clinet length %ld\n\r",recv_data,strlen(recv_data));
-		//printf("Sending data %s to clinet length %d\n\r",read_buffer,read_data_len);
 
-		
-		//Send data to client that was read from file
-		status = send(accepted_sockfd,read_buffer,read_data_len,0);
-		if(status == -1)
+		data_node_p->thread_params.accepted_sockfd = accepted_sockfd;
+		data_node_p->thread_params.is_thread_complete = 0;
+		data_node_p->thread_params.mutex_lock = &mutex_lock;
+
+		status = pthread_create(&(data_node_p->thread_params.thread_id),NULL,thread_callback,&(data_node_p->thread_params));
+		if(status != 0)
 		{
-			syslog(LOG_ERR,"send() failed");
-			freeaddrinfo(serveinfo);
+			syslog(LOG_ERR,"pthread_create failed");
 			return -1;
 		}
-		free(read_buffer);
-		read_buffer = NULL;
-		cleanup();
+
+		SLIST_FOREACH(data_node_p,&head,entries)
+		{
+
+			if(data_node_p->thread_params.is_thread_complete == true){
+				pthread_join(data_node_p->thread_params.thread_id,NULL);
+
+				data_node_p = SLIST_FIRST(&head);
+				SLIST_REMOVE_HEAD(&head, entries);
+				free(data_node_p);
+			}
+		}
+		
+		
+
+
 	}
 	//
 
-
+		//closing any open sockets, 
+		close(sockfd);
+		close(accepted_sockfd);
+		
+		syslog(LOG_ERR,"Closed connection from %s\n\r",inet_ntoa(client_addr.sin_addr)); //inet_ntoa converts raw address into human readable format
 
 }
 

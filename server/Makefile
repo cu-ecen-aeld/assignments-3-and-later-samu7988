@@ -2,7 +2,7 @@
 #make CROSS_COMPILE=aarch64-none-linux-gnu-
 
 CC = $(CROSS_COMPILE)gcc
-CFLAGS = -Wall -Werror
+CFLAGS = -Wall -Werror -pthread
 SRCS = aesdsocket.c 
 OBJS = $(SRCS:.c=.o) #replace .c file 
 TARGET = $(SRCS:.c=) #replace .c with nothing"" for eg. aesdsocket.c => writer
