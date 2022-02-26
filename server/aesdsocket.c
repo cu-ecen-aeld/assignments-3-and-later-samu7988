@@ -362,43 +362,10 @@ int register_signal_handler()
 		return -1;
 	}
 }
-/*------------------------------------------------------------------------------------------------------------------------------------*/
- /*
- @brief: Main driver function
- @param: argc : Count of argument passed from command line
- @param: argv: Array of pointer to command line arguments
- @return: returns -1 on failure, 0 on success
- */
- /*-----------------------------------------------------------------------------------------------------------------------------*/
-int main(int argc ,char* argv[])
+
+int daemonise_process(int argc ,char* argv[])
 {
-	if(argc > 2)
-	{
-		syslog(LOG_ERR,"Number of arguments passed are greater than 2");
-		return -1;
-	}
-	
-	openlog("AESD_SOCKET", LOG_DEBUG, LOG_DAEMON); //check /var/log/syslog
-
 	int status = 0;
-
-	status = register_signal_handler();
-	if(status == -1)
-	{
-		syslog(LOG_ERR,"register_signal_handler");
-		return -1;
-	}
-	
-
-
-	status = open_socket_then_bind();
-	if(status == -1)
-	{
-		syslog(LOG_ERR,"open_socket_then_bind failed");
-		return -1;
-	}
-	
-	
 	//Daemonize the process after bind is successfull
 	if(argc >= 2 && argv[1] != NULL && (strcmp(argv[1],"-d") == 0))
 	{
@@ -418,8 +385,11 @@ int main(int argc ,char* argv[])
 		}
 	}
 
+	return 0;
+}
 
-
+int create_new_file()
+{
 	//open file to write the received data from client
 	FILE* fptr = fopen(RECV_FILE_NAME,"w"); //use a+ to open already existing file, w to create new file if not exist 
 	if(fptr == NULL)
@@ -431,6 +401,58 @@ int main(int argc ,char* argv[])
 
 	fclose(fptr);
 	fptr = NULL;
+
+	return 0;
+
+}
+/*------------------------------------------------------------------------------------------------------------------------------------*/
+ /*
+ @brief: Main driver function
+ @param: argc : Count of argument passed from command line
+ @param: argv: Array of pointer to command line arguments
+ @return: returns -1 on failure, 0 on success
+ */
+ /*-----------------------------------------------------------------------------------------------------------------------------*/
+int main(int argc ,char* argv[])
+{
+	if(argc > 2)
+	{
+		syslog(LOG_ERR,"Number of arguments passed are greater than 2");
+		return -1;
+	}
+
+	openlog("AESD_SOCKET", LOG_DEBUG, LOG_DAEMON); //check /var/log/syslog
+
+	int status = 0;
+
+	status = register_signal_handler();
+	if(status == -1)
+	{
+		syslog(LOG_ERR,"register_signal_handler");
+		return -1;
+	}
+	
+	status = open_socket_then_bind();
+	if(status == -1)
+	{
+		syslog(LOG_ERR,"open_socket_then_bind failed");
+		return -1;
+	}
+	
+	status = daemonise_process(argc ,argv);
+	if(status == -1)
+	{
+		syslog(LOG_ERR, "daemonise_process failed");
+		return -1;
+	}
+
+	status = create_new_file();
+	if(status == -1)
+	{
+		syslog(LOG_ERR,"create_new_file failed");
+		return -1;
+	}
+
 	
 	slist_data_t* data_node_p = NULL;
 	SLIST_HEAD(slisthead, slist_data_s) head;
