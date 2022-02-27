@@ -49,7 +49,6 @@ struct sockaddr_in client_addr;
 struct addrinfo* serveinfo = NULL;
 pthread_mutex_t mutex_lock = PTHREAD_MUTEX_INITIALIZER;
 
-
 typedef struct 
 {
 	pthread_t thread_id;
@@ -62,11 +61,39 @@ typedef struct slist_data_s
 	pthread_params_t thread_params; //data
 	SLIST_ENTRY(slist_data_s) entries ; //Pointer to next node
 }slist_data_t;
+
 slist_data_t* data_node_p = NULL;
 
 //***********************************************************************************
 //                              Function definition
 //***********************************************************************************
+
+/*------------------------------------------------------------------------------------------------------------------------------------*/
+ /*
+ @brief:Accept connection
+ @param: None
+ @return: returns -1 on failure, 0 on success
+ */
+ /*-----------------------------------------------------------------------------------------------------------------------------*/
+
+int accept_connection()
+{
+	//Accept
+	memset(&client_addr, 0, sizeof(client_addr));
+	socklen_t client_addr_len = 0;
+
+	accepted_sockfd = accept(sockfd, (struct sockaddr*)&client_addr, &client_addr_len);	
+	if(accepted_sockfd == -1)
+	{
+		syslog(LOG_ERR,"accept() failed \n\r");
+		printf("accept error: %s\n",strerror(errno));
+
+		freeaddrinfo(serveinfo);
+		return -1;
+	}	
+
+	return 0;
+}
  /*------------------------------------------------------------------------------------------------------------------------------------*/
  /*
  @brief:Populates the serveinfo pointer
@@ -185,7 +212,13 @@ void sighandler(int signal)
 	}
 
 }
-
+/*------------------------------------------------------------------------------------------------------------------------------------*/
+ /*
+ @brief: Timer handler that gets fired every period
+ @param: signal: Indicates signal number
+ @return: None
+ */
+ /*-----------------------------------------------------------------------------------------------------------------------------*/
 //Reference: https://www.geeksforgeeks.org/strftime-function-in-c/
 void timer_handler(int signal)
 {
@@ -241,7 +274,13 @@ void timer_handler(int signal)
 		}
 	}
 }
-
+/*------------------------------------------------------------------------------------------------------------------------------------*/
+ /*
+ @brief:Initialises timer to fire every time_period second
+ @param: time_period: Time period after which timer fires
+ @return: returns -1 on failure, 0 on success
+ */
+ /*-----------------------------------------------------------------------------------------------------------------------------*/
 int init_timer(time_t time_period)
 {
 	int status = 0;
@@ -309,6 +348,8 @@ void cleanup()
 		if (n == -1) 
 		{
 			syslog(LOG_ERR,"\n\rrecv failed ");
+			printf("%d",cb_params->accepted_sockfd);
+						printf("recv error: %s\n",strerror(errno));
 			freeaddrinfo(serveinfo);
 			exit(1);
 		}
@@ -376,10 +417,16 @@ void cleanup()
 
 	cb_params->is_thread_complete = true;
 	close(cb_params->accepted_sockfd);
-
+	//close(sockfd);
 	return cb_params;
  }
-
+/*------------------------------------------------------------------------------------------------------------------------------------*/
+ /*
+ @brief:Open socket connection and then bind
+ @param: None
+ @return: returns -1 on failure, 0 on success
+ */
+ /*-----------------------------------------------------------------------------------------------------------------------------*/
 int open_socket_then_bind()
 {
 	int status = 0;
@@ -419,7 +466,13 @@ int open_socket_then_bind()
 	}
 	return 0;
 }
-
+/*------------------------------------------------------------------------------------------------------------------------------------*/
+ /*
+ @brief:Register signal handler
+ @param: None
+ @return: returns -1 on failure, 0 on success
+ */
+ /*-----------------------------------------------------------------------------------------------------------------------------*/
 int register_signal_handler()
 {
 	if(signal(SIGINT,sighandler) == SIG_ERR)
@@ -440,7 +493,14 @@ int register_signal_handler()
 		return -1;
 	}
 }
-
+/*------------------------------------------------------------------------------------------------------------------------------------*/
+ /*
+ @brief:Daemonise the process when user passes -d as argument
+ @param: arg: Number of argument passed through command line
+ @param: argv[]: Pointer that holds the arguments passed through command line
+ @return: returns -1 on failure, 0 on success
+ */
+ /*-----------------------------------------------------------------------------------------------------------------------------*/
 int daemonise_process(int argc ,char* argv[])
 {
 	int status = 0;
@@ -464,7 +524,13 @@ int daemonise_process(int argc ,char* argv[])
 
 	return 0;
 }
-
+/*------------------------------------------------------------------------------------------------------------------------------------*/
+ /*
+ @brief:Creates new file
+ @param: None
+ @return: returns -1 on failure, 0 on success
+ */
+ /*-----------------------------------------------------------------------------------------------------------------------------*/
 int create_new_file()
 {
 	//open file to write the received data from client
@@ -483,7 +549,13 @@ int create_new_file()
 
 }
 
-
+/*------------------------------------------------------------------------------------------------------------------------------------*/
+ /*
+ @brief:Initialises mutex lock
+ @param: None
+ @return: returns -1 on failure, 0 on success
+ */
+ /*-----------------------------------------------------------------------------------------------------------------------------*/
 int initialise_mutex_lock()
 {
 	int status = 0;
@@ -496,6 +568,7 @@ int initialise_mutex_lock()
 	}
 	return 0;
 }
+
 /*------------------------------------------------------------------------------------------------------------------------------------*/
  /*
  @brief: Main driver function
@@ -549,8 +622,6 @@ int main(int argc ,char* argv[])
 
 	status = initialise_mutex_lock();
 	
-	
-
 
 	status = init_timer(TEN_SECOND);
 	if(status == -1)
@@ -570,21 +641,14 @@ int main(int argc ,char* argv[])
 			return -1;
 		}
 
-		syslog(LOG_ERR,"Waiting for connection from client() \n\r");
-		
 		//Accept
-		//struct sockaddr client_addr; 
-		memset(&client_addr, 0, sizeof(client_addr));
-		socklen_t client_addr_len = 0;
-
-		accepted_sockfd = accept(sockfd, (struct sockaddr*)&client_addr, &client_addr_len);	
-		if(accepted_sockfd == -1)
+		status = accept_connection();
+		if(status == -1)
 		{
-			syslog(LOG_ERR,"accept() \n\r");
-			// printf("accept failed\n\r");
-			freeaddrinfo(serveinfo);
+			syslog(LOG_ERR,"accept_connection() failed");
 			return -1;
-		}	
+		}
+
 		syslog(LOG_ERR,"Accepted connection from %s\n\r",inet_ntoa(client_addr.sin_addr)); //inet_ntoa converts raw address into human readable format
 
 		//Create threads
@@ -595,11 +659,13 @@ int main(int argc ,char* argv[])
 			syslog(LOG_ERR,"main() data_node_p is NULL");
 			return -1;
 		}
-		SLIST_INSERT_HEAD(&head,data_node_p,entries);
+
 		data_node_p->thread_params.accepted_sockfd = accepted_sockfd;
 		data_node_p->thread_params.is_thread_complete = 0;
+		
+		SLIST_INSERT_HEAD(&head,data_node_p,entries);
 
-		status = pthread_create(&(data_node_p->thread_params.thread_id),NULL,thread_callback,&data_node_p->thread_params);
+		status = pthread_create(&(data_node_p->thread_params.thread_id),NULL,thread_callback,&(data_node_p->thread_params));
 		if(status != 0)
 		{
 			syslog(LOG_ERR,"pthread_create failed");
@@ -616,20 +682,13 @@ int main(int argc ,char* argv[])
 				SLIST_REMOVE_HEAD(&head, entries);
 				free(data_node_p);
 			}
-
 		}
-
-
 		
-		
-
-
 	}
 	//
 
 		//closing any open sockets, 
-		close(sockfd);
-		close(accepted_sockfd);
+		cleanup();
 		
 		syslog(LOG_ERR,"Closed connection from %s\n\r",inet_ntoa(client_addr.sin_addr)); //inet_ntoa converts raw address into human readable format
 
