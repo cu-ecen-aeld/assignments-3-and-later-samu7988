@@ -48,6 +48,7 @@ FILE* fptr = NULL;
 struct sockaddr_in client_addr;
 struct addrinfo* serveinfo = NULL;
 pthread_mutex_t mutex_lock = PTHREAD_MUTEX_INITIALIZER;
+slist_data_t* data_node_p = NULL;
 
 
 typedef struct 
@@ -549,7 +550,6 @@ int main(int argc ,char* argv[])
 	status = initialise_mutex_lock();
 	
 	
-	slist_data_t* data_node_p = NULL;
 
 
 	status = init_timer(TEN_SECOND);
@@ -581,6 +581,7 @@ int main(int argc ,char* argv[])
 		if(accepted_sockfd == -1)
 		{
 			syslog(LOG_ERR,"accept() \n\r");
+			// printf("accept failed\n\r");
 			freeaddrinfo(serveinfo);
 			return -1;
 		}	
@@ -594,11 +595,11 @@ int main(int argc ,char* argv[])
 			syslog(LOG_ERR,"main() data_node_p is NULL");
 			return -1;
 		}
-
+		SLIST_INSERT_HEAD(&head,data_node_p,entries);
 		data_node_p->thread_params.accepted_sockfd = accepted_sockfd;
 		data_node_p->thread_params.is_thread_complete = 0;
 
-		status = pthread_create(&(data_node_p->thread_params.thread_id),NULL,thread_callback,&(data_node_p->thread_params));
+		status = pthread_create(&(data_node_p->thread_params.thread_id),NULL,thread_callback,&data_node_p->thread_params);
 		if(status != 0)
 		{
 			syslog(LOG_ERR,"pthread_create failed");
@@ -607,15 +608,18 @@ int main(int argc ,char* argv[])
 
 		SLIST_FOREACH(data_node_p,&head,entries)
 		{
+			pthread_join(data_node_p->thread_params.thread_id,NULL);
 
 			if(data_node_p->thread_params.is_thread_complete == true){
-				pthread_join(data_node_p->thread_params.thread_id,NULL);
 
 				data_node_p = SLIST_FIRST(&head);
 				SLIST_REMOVE_HEAD(&head, entries);
 				free(data_node_p);
 			}
+
 		}
+
+
 		
 		
 
@@ -630,4 +634,3 @@ int main(int argc ,char* argv[])
 		syslog(LOG_ERR,"Closed connection from %s\n\r",inet_ntoa(client_addr.sin_addr)); //inet_ntoa converts raw address into human readable format
 
 }
-
