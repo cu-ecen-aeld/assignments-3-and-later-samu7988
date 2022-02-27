@@ -48,7 +48,6 @@ FILE* fptr = NULL;
 struct sockaddr_in client_addr;
 struct addrinfo* serveinfo = NULL;
 pthread_mutex_t mutex_lock = PTHREAD_MUTEX_INITIALIZER;
-slist_data_t* data_node_p = NULL;
 
 
 typedef struct 
@@ -63,6 +62,7 @@ typedef struct slist_data_s
 	pthread_params_t thread_params; //data
 	SLIST_ENTRY(slist_data_s) entries ; //Pointer to next node
 }slist_data_t;
+slist_data_t* data_node_p = NULL;
 
 //***********************************************************************************
 //                              Function definition
