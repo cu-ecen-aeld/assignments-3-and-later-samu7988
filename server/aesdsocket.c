@@ -9,17 +9,17 @@
 //***********************************************************************************
 //                              Include files
 //***********************************************************************************
-#include<stdio.h>
-#include<sys/socket.h>
-#include<sys/types.h>
-#include<netdb.h>
-#include<string.h>
+#include <stdio.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <netdb.h>
+#include <string.h>
 #include <syslog.h>
 #include <arpa/inet.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include<signal.h>
-#include<errno.h>
+#include <signal.h>
+#include <errno.h>
 #include <sys/queue.h>
 #include <stdbool.h>
 #include <pthread.h>
@@ -36,6 +36,8 @@
 #define MAX_PENDING_CONN_REQUEST  (10)
 #define RECV_FILE_NAME ("/var/tmp/aesd_socketdata")
 #define TEN_SECOND (10)
+#define BAD_FILE_DESCRIPTOR (9)
+#define GRACEFUL_EXIT   (2)
 
 //***********************************************************************************
 //                              Global variables
@@ -48,6 +50,7 @@ FILE* fptr = NULL;
 struct sockaddr_in client_addr;
 struct addrinfo* serveinfo = NULL;
 pthread_mutex_t mutex_lock = PTHREAD_MUTEX_INITIALIZER;
+SLIST_HEAD(slisthead, slist_data_s) head = SLIST_HEAD_INITIALIZER(head);
 
 typedef struct 
 {
@@ -56,12 +59,13 @@ typedef struct
 	bool is_thread_complete;
 }pthread_params_t;
 
-typedef struct slist_data_s
+struct slist_data_s
 {
 	pthread_params_t thread_params; //data
 	SLIST_ENTRY(slist_data_s) entries ; //Pointer to next node
-}slist_data_t;
+};
 
+typedef struct slist_data_s slist_data_t;
 slist_data_t* data_node_p = NULL;
 
 //***********************************************************************************
@@ -85,11 +89,19 @@ int accept_connection()
 	accepted_sockfd = accept(sockfd, (struct sockaddr*)&client_addr, &client_addr_len);	
 	if(accepted_sockfd == -1)
 	{
-		syslog(LOG_ERR,"accept() failed \n\r");
-		printf("accept error: %s\n",strerror(errno));
+		//Errno is set to bad file descriptor when shutdown occurs, and it still waits for conneciton
+		if(errno == BAD_FILE_DESCRIPTOR)
+		{
+			return GRACEFUL_EXIT;
+		}
+		else
+		{
+			syslog(LOG_ERR,"accept() failed \n\r");
+			printf("accept error: %s %d\n",strerror(errno),errno);
 
-		freeaddrinfo(serveinfo);
-		return -1;
+			freeaddrinfo(serveinfo);
+			return -1;
+		}
 	}	
 
 	return 0;
@@ -207,7 +219,16 @@ void sighandler(int signal)
 
 		//and deleting the file /var/tmp/aesdsocketdata.
 		remove(RECV_FILE_NAME);
-
+		
+		slist_data_t* temp = NULL;
+		//Delete the linked list
+		while (!SLIST_EMPTY(&head)) 
+		{          
+		/* List Deletion. */
+			temp = SLIST_FIRST(&head);
+			SLIST_REMOVE_HEAD(&head, entries);
+			free(temp);
+		}
 		closelog();
 	}
 
@@ -617,7 +638,6 @@ int main(int argc ,char* argv[])
 		return -1;
 	}
 
-	SLIST_HEAD(slisthead, slist_data_s) head;
 	SLIST_INIT(&head);
 
 	status = initialise_mutex_lock();
@@ -648,12 +668,15 @@ int main(int argc ,char* argv[])
 			syslog(LOG_ERR,"accept_connection() failed");
 			return -1;
 		}
+		else if(status == GRACEFUL_EXIT)
+		{
+			return 0;
+		}
 
 		syslog(LOG_ERR,"Accepted connection from %s\n\r",inet_ntoa(client_addr.sin_addr)); //inet_ntoa converts raw address into human readable format
 
 		//Create threads
 		data_node_p = malloc(sizeof(slist_data_t));
-		
 		if(data_node_p == NULL)
 		{
 			syslog(LOG_ERR,"main() data_node_p is NULL");
@@ -671,18 +694,24 @@ int main(int argc ,char* argv[])
 			syslog(LOG_ERR,"pthread_create failed");
 			return -1;
 		}
-
-		SLIST_FOREACH(data_node_p,&head,entries)
+		
+		slist_data_t* temp = NULL;
+		SLIST_FOREACH(temp,&head,entries)
 		{
-			pthread_join(data_node_p->thread_params.thread_id,NULL);
 
-			if(data_node_p->thread_params.is_thread_complete == true){
+			if(temp->thread_params.is_thread_complete == true)
+			{
+							pthread_join(temp->thread_params.thread_id,NULL);
 
-				data_node_p = SLIST_FIRST(&head);
-				SLIST_REMOVE_HEAD(&head, entries);
-				free(data_node_p);
+				// slist_data_t* temp_head = NULL;
+				// temp_head = SLIST_FIRST(&head);
+				// SLIST_REMOVE_HEAD(&head, entries);
+				// printf("\n\rremove free:%lu",sizeof(*temp_head));
+				// free(temp_head);
 			}
 		}
+
+
 		
 	}
 	//
