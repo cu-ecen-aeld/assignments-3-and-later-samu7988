@@ -44,14 +44,25 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
     	printf("aesd_circular_buffer_find_entry_offset_for_fpos(): entry_offset_byte_rtn is NULL");
     }
     
-    int start_idx = 0;
+    int idx = 0;
 
     struct aesd_buffer_entry* slot_p = NULL;
     struct aesd_buffer_entry* result_p = NULL;
     
-    for(int i = start_idx ; i < AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED; i++)
+    for(int i = 0 ; i < AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED; i++)
     {
-    	struct aesd_buffer_entry* slot_p = &(buffer->entry[i]);
+    	//start reading slots from buffer->out_offs and next 10 slots
+    	//Handle wrap around condition
+    	if((buffer->out_offs + i) >= AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED)
+    	{
+    	  idx = (buffer->out_offs + i)%AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+    	}
+    	else
+    	{
+    	  idx = buffer->out_offs + i; //if not wraparound , then only increment by 1
+    	}
+    	
+     	slot_p = &(buffer->entry[idx]);
     	
     	if(slot_p == NULL || slot_p->size == 0)
     	{
@@ -60,9 +71,10 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
     	}
     	
     	size_t length_string = slot_p->size;
-    	if(char_offset > length_string)
+
+    	if(char_offset > (length_string - 1))
     	{
-    	  char_offset -= length_string;
+    	  char_offset -= length_string; 
     	  continue;
     	}
     	else
