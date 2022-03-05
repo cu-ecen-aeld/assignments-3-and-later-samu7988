@@ -15,39 +15,8 @@
 #endif
 
 #include "aesd-circular-buffer.h"
+#include <stdio.h>
 
-struct aesd_buffer_entry
-{
-	/**
-	 * A location where the buffer contents in buffptr are stored
-	 */
-	const char *buffptr;
-	/**
-	 * Number of bytes stored in buffptr
-	 */
-	size_t size;
-};
-
-struct aesd_circular_buffer
-{
-	/**
-	 * An array of pointers to memory allocated for the most recent write operations
-	 */
-	struct aesd_buffer_entry  entry[AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED];
-	/**
-	 * The current location in the entry structure where the next write should
-	 * be stored.
-	 */
-	uint8_t in_offs;
-	/**
-	 * The first location in the entry structure to read from
-	 */
-	uint8_t out_offs;
-	/**
-	 * set to true when the buffer entry structure is full
-	 */
-	bool full;
-};
 /**
  * @param buffer the buffer to search for corresponding offset.  Any necessary locking must be performed by caller.
  * @param char_offset the position to search for in the buffer list, describing the zero referenced
@@ -64,7 +33,46 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
     /**
     * TODO: implement per description
     */
-    return NULL;
+    
+    if(buffer == NULL)
+    {
+    	printf("aesd_circular_buffer_find_entry_offset_for_fpos(): buffer is NULL");
+    }
+    
+    if(entry_offset_byte_rtn == NULL)
+    {
+    	printf("aesd_circular_buffer_find_entry_offset_for_fpos(): entry_offset_byte_rtn is NULL");
+    }
+    
+    int start_idx = 0;
+
+    struct aesd_buffer_entry* slot_p = NULL;
+    struct aesd_buffer_entry* result_p = NULL;
+    
+    for(int i = start_idx ; i < AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED; i++)
+    {
+    	struct aesd_buffer_entry* slot_p = &(buffer->entry[i]);
+    	
+    	if(slot_p == NULL || slot_p->size == 0)
+    	{
+    	  printf("aesd_circular_buffer_find_entry_offset_for_fpos(): slot_p is NULL or slot_p->size == 0");
+    	  break;
+    	}
+    	
+    	size_t length_string = slot_p->size;
+    	if(char_offset > length_string)
+    	{
+    	  char_offset -= length_string;
+    	  continue;
+    	}
+    	else
+    	{
+    	  *entry_offset_byte_rtn = char_offset;
+    	  result_p =  slot_p;
+    	  break;
+    	}
+    } 
+    return result_p;
 }
 
 /**
@@ -93,7 +101,7 @@ void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const s
     if(buffer->full == 1)
     {
     	//Overwrite the oldest entry
-    	memcpy(&(buffer->entry[buffer->in_offs]),add_entry);
+    	memcpy(&(buffer->entry[buffer->in_offs]),add_entry,sizeof(struct aesd_buffer_entry));
     	buffer->in_offs += 1;
     	if(buffer->in_offs == AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED)
     	{
@@ -109,7 +117,7 @@ void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const s
     }
     else
     {
-    	memcpy(&(buffer->entry[buffer->in_offs]),add_entry);
+    	memcpy(&(buffer->entry[buffer->in_offs]),add_entry,sizeof(struct aesd_buffer_entry));
     	buffer->in_offs += 1;
     	
     	
