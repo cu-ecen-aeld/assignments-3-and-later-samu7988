@@ -1,18 +1,30 @@
-#make all or make => then gcc will be used
-#make CROSS_COMPILE=arch-linux-gnu-
+# See example Makefile from scull project
+# Comment/uncomment the following line to disable/enable debugging
+#DEBUG = y
 
-CC = $(CROSS_COMPILE)gcc
-CFLAGS = -Wall -Werror
-SRCS = aesd-circular-buffer.c 
-OBJS = $(SRCS:.c=.o) #replace .c file 
-TARGET = $(SRCS:.c=) #replace .c with nothing"" for eg. writer.c => writer
+# Add your debugging flag (or not) to CFLAGS
+ifeq ($(DEBUG),y)
+  DEBFLAGS = -O -g -DSCULL_DEBUG # "-O" is needed to expand inlines
+else
+  DEBFLAGS = -O2
+endif
 
-all: $(TARGET)
-$(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -o $(TARGET) $(OBJS)
+EXTRA_CFLAGS += $(DEBFLAGS)
 
-.c.o:
-	$(CC) -c  $(SRCS)
+ifneq ($(KERNELRELEASE),)
+# call from kernel build system
+obj-m	:= aesdchar.o
+aesdchar-y := aesd-circular-buffer.o main.o
+else
+
+KERNELDIR ?= /lib/modules/$(shell uname -r)/build
+PWD       := $(shell pwd)
+
+modules:
+	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
+
+endif
 
 clean:
-	rm -f $(TARGET) *.o
+	rm -rf *.o *~ core .depend .*.cmd *.ko *.mod.c .tmp_versions
+
