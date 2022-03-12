@@ -28,7 +28,7 @@ struct aesd_dev
 	/**
 	 * TODO: Add structure(s) and locks needed to complete assignment requirements
 	 */
-	struct cdev cdev;	  /* Char device structure		*/
+	struct cdev cdev;	  /* Char device structure		*/ //contains dev_t,fops,owner
 };
 
 

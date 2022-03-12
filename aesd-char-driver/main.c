@@ -21,7 +21,7 @@
 int aesd_major =   0; // use dynamic major
 int aesd_minor =   0;
 
-MODULE_AUTHOR("Your Name Here"); /** TODO: fill in your name **/
+MODULE_AUTHOR("Sayali Mule"); /** TODO: fill in your name **/
 MODULE_LICENSE("Dual BSD/GPL");
 
 struct aesd_dev aesd_device;
@@ -32,6 +32,10 @@ int aesd_open(struct inode *inode, struct file *filp)
 	/**
 	 * TODO: handle open
 	 */
+    struct aesd_dev *dev; /* device information */
+	dev = container_of(inode->i_cdev, struct aesd_dev, cdev); //retrieves pointer to struct aesd_dev type which will be used in other methods
+	filp->private_data = dev; /* for other methods */
+
 	return 0;
 }
 
@@ -41,6 +45,7 @@ int aesd_release(struct inode *inode, struct file *filp)
 	/**
 	 * TODO: handle release
 	 */
+	filp->private_data = NULL;
 	return 0;
 }
 
@@ -52,6 +57,22 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 	/**
 	 * TODO: handle read
 	 */
+	//Get the pointer to aesd_dev which contains the circular buffer
+	struct aesd_dev* dev_p = (struct aesd_dev*)(filp->private_data);
+
+	//Get circular buffer pointer
+	struct aesd_circular_buffer* cb_handler = &(dev_p->cb_handler);
+
+	//Get string from particular slot in circular buffer indexed by out_offs
+	char* str = cb_handler->entry[cb_handler->out_offs].buffptr;
+	PDEBUG("Read string %s",str);
+	
+	//Get the size of string from circular buffer slot
+	retval = cb_handler->entry[cb_handler->out_offs].size;
+
+	//Copyt the string retreived from circular buffer into user space.
+	copy_to_user(buf,str,retval);
+	
 	return retval;
 }
 
@@ -63,6 +84,22 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 	/**
 	 * TODO: handle write
 	 */
+	//Get the pointer to aesd_dev which contains the circular buffer
+	struct aesd_dev* dev_p = (struct aesd_dev*)(filp->private_data);
+	
+	//Get circular buffer pointer
+	struct aesd_circular_buffer* cb_handler = &(dev_p->cb_handler);
+
+	char* temp_string_p = kmalloc(strlen(buf) + 1,GFP_KERNEL);
+	copy_from_user(temp_string_p,buf,strlen(buf)+1);
+
+	aesd_buffer_entry entry;
+	entry.buffptr = temp_string_p;
+	entry.size = strlen(temp_string_p);
+
+	aesd_circular_buffer_add_entry(cb_handler,&entry);
+
+
 	return retval;
 }
 struct file_operations aesd_fops = {
@@ -93,6 +130,7 @@ int aesd_init_module(void)
 {
 	dev_t dev = 0;
 	int result;
+	//Populate device number in first parameter i.e dev(12 bit major , 20bit minor)
 	result = alloc_chrdev_region(&dev, aesd_minor, 1,
 			"aesdchar");
 	aesd_major = MAJOR(dev);
@@ -105,7 +143,8 @@ int aesd_init_module(void)
 	/**
 	 * TODO: initialize the AESD specific portion of the device
 	 */
-
+	aesd_circular_buffer_init(&aesd_device.cb_handler);
+	
 	result = aesd_setup_cdev(&aesd_device);
 
 	if( result ) {
