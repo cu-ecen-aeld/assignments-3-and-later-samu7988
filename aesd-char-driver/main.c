@@ -60,6 +60,8 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 	size_t remaining_bytes_to_read_in_entry = 0;
 	struct aesd_buffer_entry* entry_within_cb_p; //Points to particular entry in circular buffer
 	size_t remaining_number_of_bytes_still_to_be_copied = 0;
+	struct aesd_circular_buffer* cb_handler_p = NULL;
+	const char* string_to_be_read_from_kernel = NULL;
 
 	//Get the pointer to aesd_dev which contains the circular buffer
 	struct aesd_dev* dev_p = (struct aesd_dev*)(filp->private_data);
@@ -69,7 +71,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 	}
 
 	//Get circular buffer pointer from dev_p
-	struct aesd_circular_buffer* cb_handler_p = &(dev_p->cb_handler);
+	cb_handler_p = &(dev_p->cb_handler);
 	if(cb_handler_p == NULL)
 	{
 		goto error_handler;
@@ -90,7 +92,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 		remaining_bytes_to_read_in_entry = count;
 	}
 	
-	const char* string_to_be_read_from_kernel = entry_within_cb_p->buffptr + offset_within_particular_entry;
+	string_to_be_read_from_kernel = entry_within_cb_p->buffptr + offset_within_particular_entry;
 	if(string_to_be_read_from_kernel == NULL)
 	{
 		goto error_handler;
@@ -107,7 +109,6 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 	 * TODO: handle read
 	 */
 
-	PDEBUG("Read string %s",str);
 	
 error_handler:
 	return retval;
@@ -117,30 +118,75 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
                 loff_t *f_pos)
 {
 	ssize_t retval = -ENOMEM;
-	//Get the pointer to aesd_dev which contains the circular buffer
+	size_t remaining_bytes_to_be_copied = 0;
+	size_t actual_num_bytes_copied = 0;
+	const char* oldest_entry_string_p = NULL;
+	struct aesd_circular_buffer* cb_handler_p = NULL;
+	struct aesd_buffer_entry* preserved_entry_p = NULL;
+	//Get the pointer to aesd_dev which contains the circular buffer and preserved entry
 	struct aesd_dev* dev_p = (struct aesd_dev*)(filp->private_data);
-	
-	//Get circular buffer pointer
-	struct aesd_circular_buffer* cb_handler = &(dev_p->cb_handler);
+	if(dev_p == NULL)
+	{
+		goto error_handler;
+	}
+	//Get circular buffer pointer from dev_p
+	cb_handler_p = &(dev_p->cb_handler);
+	if(cb_handler_p == NULL)
+	{
+		goto error_handler;
+	}
 
-	char* temp_string_p = kmalloc(strlen(buf) + 1,GFP_KERNEL);
-	struct aesd_buffer_entry entry;
+	//Get the preserved entry pointer from dev_p
+	preserved_entry_p = &(dev_p->entry_to_insert_in_cb);
+	if(preserved_entry_p == NULL)
+	{
+		goto error_handler;
+	}
+
+	if(preserved_entry_p->size == 0)
+	{
+		preserved_entry_p->buffptr = kmalloc(count,GFP_KERNEL);
+	}
+	else
+	{
+		preserved_entry_p->buffptr = krealloc(preserved_entry_p->buffptr, preserved_entry_p->size + count, GFP_KERNEL);
+	}
+
+	if(preserved_entry_p->buffptr == NULL)
+	{
+		goto error_handler;
+	}
 
 	PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
 	/**
 	 * TODO: handle write
 	 */
 
-	retval = copy_from_user(temp_string_p,buf,strlen(buf)+1);
+	remaining_bytes_to_be_copied = copy_from_user((char*)(preserved_entry_p->buffptr + preserved_entry_p->size),buf,count);
+	actual_num_bytes_copied = count - remaining_bytes_to_be_copied;
 
-	entry.buffptr = temp_string_p;
-	entry.size = strlen(temp_string_p);
+	preserved_entry_p->size += actual_num_bytes_copied;
 
-	aesd_circular_buffer_add_entry(cb_handler,&entry);
+	//if new line character is found in the string that is copied to the entry,then insert the entry into circular buffer
+	if(memchr(preserved_entry_p->buffptr,'\n',preserved_entry_p->size) != NULL)
+	{
+		//Get the oldest entry if the buffer is full, NUll if buffer is not full
+		oldest_entry_string_p = aesd_circular_buffer_add_entry(cb_handler_p,preserved_entry_p);
+		
+		//if circular buffer is  full, then free the oldest entry
+		if( oldest_entry_string_p != NULL)
+		{
+			kfree(oldest_entry_string_p);
+		}
 
-	//retval = strlen(temp_string_p) + 1;
+		preserved_entry_p->size = 0;
+		preserved_entry_p->buffptr = NULL;
+	
+	}
 
+	retval = actual_num_bytes_copied;
 
+error_handler:
 	return retval;
 }
 struct file_operations aesd_fops = {
