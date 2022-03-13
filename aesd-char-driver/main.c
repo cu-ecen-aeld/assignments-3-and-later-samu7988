@@ -56,15 +56,52 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
                 loff_t *f_pos)
 {
 	ssize_t retval = 0;
+	size_t offset_within_particular_entry =0;
+	size_t remaining_bytes_to_read_in_entry = 0;
+	struct aesd_buffer_entry* entry_within_cb_p; //Points to particular entry in circular buffer
+	size_t remaining_number_of_bytes_still_to_be_copied = 0;
+
 	//Get the pointer to aesd_dev which contains the circular buffer
 	struct aesd_dev* dev_p = (struct aesd_dev*)(filp->private_data);
+	if(dev_p == NULL)
+	{
+		goto error_handler;
+	}
 
-	//Get circular buffer pointer
-	struct aesd_circular_buffer* cb_handler = &(dev_p->cb_handler);
+	//Get circular buffer pointer from dev_p
+	struct aesd_circular_buffer* cb_handler_p = &(dev_p->cb_handler);
+	if(cb_handler_p == NULL)
+	{
+		goto error_handler;
+	}
 
-	//Get string from particular slot in circular buffer indexed by out_offs
-	const char* str = cb_handler->entry[cb_handler->out_offs].buffptr;
+	//Get particular entry within circular buffer depending upon *fpos
+	entry_within_cb_p = aesd_circular_buffer_find_entry_offset_for_fpos(cb_handler_p,*f_pos,&offset_within_particular_entry);
+	if(entry_within_cb_p == NULL)
+	{
+		goto error_handler;
+	}
+	
+	remaining_bytes_to_read_in_entry = entry_within_cb_p->size - offset_within_particular_entry;
 
+	//Prevent to read more than what user has requested
+	if(remaining_bytes_to_read_in_entry > count)
+	{
+		remaining_bytes_to_read_in_entry = count;
+	}
+	
+	const char* string_to_be_read_from_kernel = entry_within_cb_p->buffptr + offset_within_particular_entry;
+	if(string_to_be_read_from_kernel == NULL)
+	{
+		goto error_handler;
+	}
+
+	remaining_number_of_bytes_still_to_be_copied = copy_to_user(buf,string_to_be_read_from_kernel, remaining_bytes_to_read_in_entry);
+
+	retval = remaining_bytes_to_read_in_entry - remaining_number_of_bytes_still_to_be_copied;
+	*f_pos += remaining_bytes_to_read_in_entry - remaining_number_of_bytes_still_to_be_copied;;
+
+	
 	PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
 	/**
 	 * TODO: handle read
@@ -72,12 +109,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 
 	PDEBUG("Read string %s",str);
 	
-	//Get the size of string from circular buffer slot
-	//retval = cb_handler->entry[cb_handler->out_offs].size;
-
-	//Copyt the string retreived from circular buffer into user space.
-	retval = copy_to_user(buf,str,retval);
-	
+error_handler:
 	return retval;
 }
 
