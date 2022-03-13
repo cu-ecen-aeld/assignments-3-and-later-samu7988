@@ -62,6 +62,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 	size_t remaining_number_of_bytes_still_to_be_copied = 0;
 	struct aesd_circular_buffer* cb_handler_p = NULL;
 	const char* string_to_be_read_from_kernel = NULL;
+	struct mutex* mutex_p = NULL;
 
 	//Get the pointer to aesd_dev which contains the circular buffer
 	struct aesd_dev* dev_p = (struct aesd_dev*)(filp->private_data);
@@ -70,6 +71,13 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 		goto error_handler;
 	}
 
+	mutex_p = &(dev_p->mutex_lock);
+	if(mutex_p == NULL)
+	{
+		goto error_handler;
+	}
+
+
 	//Get circular buffer pointer from dev_p
 	cb_handler_p = &(dev_p->cb_handler);
 	if(cb_handler_p == NULL)
@@ -77,6 +85,16 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 		goto error_handler;
 	}
 
+	if(filp == NULL || buf == NULL || f_pos == NULL)
+	{
+		return -EFAULT;
+	}
+
+	//return 0 if mutex is already acquired and Go to sleep until mutex becomes available.
+	if(mutex_lock_interruptible(mutex_p) != 0)
+	{
+		return -ERESTARTSYS; 
+	}
 	//Get particular entry within circular buffer depending upon *fpos
 	entry_within_cb_p = aesd_circular_buffer_find_entry_offset_for_fpos(cb_handler_p,*f_pos,&offset_within_particular_entry);
 	if(entry_within_cb_p == NULL)
@@ -105,12 +123,10 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 
 	
 	PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
-	/**
-	 * TODO: handle read
-	 */
 
 	
 error_handler:
+  	mutex_unlock(mutex_p);
 	return retval;
 }
 
@@ -125,10 +141,13 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 	struct aesd_buffer_entry* preserved_entry_p = NULL;
 	//Get the pointer to aesd_dev which contains the circular buffer and preserved entry
 	struct aesd_dev* dev_p = (struct aesd_dev*)(filp->private_data);
+	struct mutex* mutex_p = NULL;
+
 	if(dev_p == NULL)
 	{
 		goto error_handler;
 	}
+	
 	//Get circular buffer pointer from dev_p
 	cb_handler_p = &(dev_p->cb_handler);
 	if(cb_handler_p == NULL)
@@ -136,6 +155,23 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 		goto error_handler;
 	}
 
+	//Get mutex lock
+	mutex_p = &(dev_p->mutex_lock);
+	if(mutex_p == NULL)
+	{
+		goto error_handler;
+	}
+	
+	if(filp == NULL || buf == NULL || f_pos == NULL)
+	{
+		return -EFAULT;
+	}
+	
+	//return 0 if mutex is already acquired and Go to sleep until mutex becomes available.
+	if(mutex_lock_interruptible(mutex_p) != 0)
+	{
+		return -ERESTARTSYS; 
+	}
 	//Get the preserved entry pointer from dev_p
 	preserved_entry_p = &(dev_p->entry_to_insert_in_cb);
 	if(preserved_entry_p == NULL)
@@ -187,6 +223,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 	retval = actual_num_bytes_copied;
 
 error_handler:
+  	mutex_unlock(mutex_p);
 	return retval;
 }
 struct file_operations aesd_fops = {
@@ -231,7 +268,7 @@ int aesd_init_module(void)
 	 * TODO: initialize the AESD specific portion of the device
 	 */
 	aesd_circular_buffer_init(&aesd_device.cb_handler);
-	
+	mutex_init(&aesd_device.mutex_lock);
 	result = aesd_setup_cdev(&aesd_device);
 
 	if( result ) {

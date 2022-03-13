@@ -26,13 +26,16 @@
 
 struct aesd_dev
 {
-	struct aesd_buffer_entry entry_to_insert_in_cb;
-
-	struct aesd_circular_buffer cb_handler; //actual circular buffer 
 
 	/**
 	 * TODO: Add structure(s) and locks needed to complete assignment requirements
 	 */
+	struct aesd_buffer_entry entry_to_insert_in_cb;
+
+	struct aesd_circular_buffer cb_handler; //actual circular buffer 
+
+	struct mutex mutex_lock; 
+
 	struct cdev cdev;	  /* Char device structure		*/ //contains dev_t,fops,owner
 };
 
