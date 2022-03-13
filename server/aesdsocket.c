@@ -34,11 +34,17 @@
 #define FLAGS (AI_PASSIVE)
 #define IP_ADDR	(0)
 #define MAX_PENDING_CONN_REQUEST  (10)
-#define RECV_FILE_NAME ("/var/tmp/aesd_socketdata")
+//#define RECV_FILE_NAME ("/var/tmp/aesd_socketdata")
 #define TEN_SECOND (10)
 #define BAD_FILE_DESCRIPTOR (9)
 #define GRACEFUL_EXIT   (2)
 
+#define USE_AESD_CHAR_DEVICE	1
+#if (USE_AESD_CHAR_DEVICE == 1)
+	#define RECV_FILE_NAME ("/dev/aesdchar")
+#else
+	#define RECV_FILE_NAME ("/var/tmp/aesdsocketdata")
+#endif
 //***********************************************************************************
 //                              Global variables
 //***********************************************************************************
@@ -508,11 +514,13 @@ int register_signal_handler()
 		return -1;
 	}
 
+	#if (USE_AESD_CHAR_DEVICE == 0)
 	if(signal(SIGALRM,timer_handler) == SIG_ERR)
 	{
 		syslog(LOG_ERR,"SIGALARM failed");
 		return -1;
 	}
+	#endif
 }
 /*------------------------------------------------------------------------------------------------------------------------------------*/
  /*
