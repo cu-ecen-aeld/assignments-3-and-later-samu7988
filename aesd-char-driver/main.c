@@ -16,8 +16,10 @@
 #include <linux/printk.h>
 #include <linux/types.h>
 #include <linux/cdev.h>
+#include <linux/slab.h>
 #include <linux/fs.h> // file_operations
 #include "aesdchar.h"
+
 int aesd_major =   0; // use dynamic major
 int aesd_minor =   0;
 
@@ -28,11 +30,12 @@ struct aesd_dev aesd_device;
 
 int aesd_open(struct inode *inode, struct file *filp)
 {
+	struct aesd_dev *dev; /* device information */
+
 	PDEBUG("open");
 	/**
 	 * TODO: handle open
 	 */
-    struct aesd_dev *dev; /* device information */
 	dev = container_of(inode->i_cdev, struct aesd_dev, cdev); //retrieves pointer to struct aesd_dev type which will be used in other methods
 	filp->private_data = dev; /* for other methods */
 
@@ -53,10 +56,6 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
                 loff_t *f_pos)
 {
 	ssize_t retval = 0;
-	PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
-	/**
-	 * TODO: handle read
-	 */
 	//Get the pointer to aesd_dev which contains the circular buffer
 	struct aesd_dev* dev_p = (struct aesd_dev*)(filp->private_data);
 
@@ -64,14 +63,20 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 	struct aesd_circular_buffer* cb_handler = &(dev_p->cb_handler);
 
 	//Get string from particular slot in circular buffer indexed by out_offs
-	char* str = cb_handler->entry[cb_handler->out_offs].buffptr;
+	const char* str = cb_handler->entry[cb_handler->out_offs].buffptr;
+
+	PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
+	/**
+	 * TODO: handle read
+	 */
+
 	PDEBUG("Read string %s",str);
 	
 	//Get the size of string from circular buffer slot
-	retval = cb_handler->entry[cb_handler->out_offs].size;
+	//retval = cb_handler->entry[cb_handler->out_offs].size;
 
 	//Copyt the string retreived from circular buffer into user space.
-	copy_to_user(buf,str,retval);
+	retval = copy_to_user(buf,str,retval);
 	
 	return retval;
 }
@@ -80,10 +85,6 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
                 loff_t *f_pos)
 {
 	ssize_t retval = -ENOMEM;
-	PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
-	/**
-	 * TODO: handle write
-	 */
 	//Get the pointer to aesd_dev which contains the circular buffer
 	struct aesd_dev* dev_p = (struct aesd_dev*)(filp->private_data);
 	
@@ -91,13 +92,21 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 	struct aesd_circular_buffer* cb_handler = &(dev_p->cb_handler);
 
 	char* temp_string_p = kmalloc(strlen(buf) + 1,GFP_KERNEL);
-	copy_from_user(temp_string_p,buf,strlen(buf)+1);
+	struct aesd_buffer_entry entry;
 
-	aesd_buffer_entry entry;
+	PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
+	/**
+	 * TODO: handle write
+	 */
+
+	retval = copy_from_user(temp_string_p,buf,strlen(buf)+1);
+
 	entry.buffptr = temp_string_p;
 	entry.size = strlen(temp_string_p);
 
 	aesd_circular_buffer_add_entry(cb_handler,&entry);
+
+	//retval = strlen(temp_string_p) + 1;
 
 
 	return retval;
