@@ -53,6 +53,7 @@ int accepted_sockfd = 0;
 char* read_buffer = NULL;
 char * recv_data = NULL;
 int fptr = 0;
+int read_data_len = 0;
 struct sockaddr_in client_addr;
 struct addrinfo* serveinfo = NULL;
 pthread_mutex_t mutex_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -431,7 +432,7 @@ void cleanup()
 	
 	//Read the data from file /var/tmp/aesd_socket
 	read_buffer = NULL;
-	int read_data_len = total;
+	read_data_len += total;
 	status = read_file(&read_buffer,&read_data_len);
 	if(status == -1)
 	{
