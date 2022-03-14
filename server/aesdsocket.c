@@ -39,7 +39,7 @@
 #define BAD_FILE_DESCRIPTOR (9)
 #define GRACEFUL_EXIT   (2)
 
-#define USE_AESD_CHAR_DEVICE	0
+#define USE_AESD_CHAR_DEVICE	1
 #if (USE_AESD_CHAR_DEVICE == 1)
 	#define RECV_FILE_NAME ("/dev/aesdchar")
 #else
@@ -164,14 +164,19 @@ int read_file(char** buffer,int* read_data_len)
 		char dummy_read_char = 0;
 
 		int length = *read_data_len;
-		printf("%d",length);
+		//printf("%d",length);
 		*buffer = malloc(length);
 		if (*buffer == NULL)
 		{
 			syslog(LOG_ERR,"read_file malloc failed");
 			return -1;
 		}
-		status = read(fptr,*buffer,length);
+
+		do
+		{
+			status += read(fptr,*buffer+status,length);
+		} while (status != length);
+		
 
 		if(status != length)
 		{
