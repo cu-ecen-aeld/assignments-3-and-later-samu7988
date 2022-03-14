@@ -1,7 +1,12 @@
 #include "systemcalls.h"
-
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <fcntl.h>
 /**
- * @param cmd the command to execute with system()
+ * @param cmd the 
+ 
+  to execute with system()
  * @return true if the commands in ... with arguments @param arguments were executed 
  *   successfully using the system() call, false if an error occurred, 
  *   either in invocation of the system() command, or if a non-zero return 
@@ -16,8 +21,17 @@ bool do_system(const char *cmd)
  *   and return a boolean true if the system() call completed with success 
  *   or false() if it returned a failure
 */
+	int status = 0;
+	status = system(cmd);
+	if(status == -1 )
+	{
+		return false;
+	}
+	else
+	{
+		return true;
+	}
 
-    return true;
 }
 
 /**
@@ -47,7 +61,8 @@ bool do_exec(int count, ...)
     command[count] = NULL;
     // this line is to avoid a compile warning before your implementation is complete
     // and may be removed
-    command[count] = command[count];
+    //command[count] = command[count];
+    va_end(args);
 
 /*
  * TODO:
@@ -59,9 +74,41 @@ bool do_exec(int count, ...)
  *   
 */
 
-    va_end(args);
+	pid_t pid = 0;
 
-    return true;
+	int wait_status = 0;
+	pid = fork();
+
+	if(pid == -1)
+	{
+		//Fork failed
+		return false;
+	}
+	else if(pid == 0)
+	{
+		//Child context
+		execv(command[0],command);
+		exit(EXIT_FAILURE);
+	}
+	else
+	{
+
+		//Parent context
+      if(waitpid(pid,&wait_status,0) == -1)
+      {
+		return false;
+      }
+	
+	  if(WEXITSTATUS(wait_status) == EXIT_FAILURE)
+	  {
+		return false;
+	  }
+
+
+	}
+
+	return true;
+
 }
 
 /**
@@ -84,7 +131,7 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
     // and may be removed
     command[count] = command[count];
 
-
+    va_end(args);
 /*
  * TODO
  *   Call execv, but first using https://stackoverflow.com/a/13784315/1446624 as a refernce,
@@ -93,7 +140,53 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
  *   
 */
 
-    va_end(args);
+
+	int pid = 0;
+	int wait_status = 0;
+	
+	int fd = open(outputfile, O_WRONLY);
+	if (fd < 0) 
+	{ 
+		exit(EXIT_FAILURE);
+	}
+	
+	pid = fork();
+	
+	if(pid == -1)
+	{
+		//Fork failed
+		return false;
+	}
+	else if(pid == 0)
+	{
+		//Child context
+		if (dup2(fd, 1) < 0) 
+		{ 
+			exit(EXIT_FAILURE);
+		}
+		close(fd);
+		execv(command[0], command);
+		exit(EXIT_FAILURE); 
+	}
+	else
+	{
+	  //Parent context
+	 
+
+	  if(waitpid(pid,&wait_status,0) == -1)
+	  {
+		return false;
+	  }
+	  close(fd);
+	  if(WEXITSTATUS(wait_status) == EXIT_FAILURE)
+	  {
+		return false;
+	  }
+	}
+	
+
     
-    return true;
+	
+	return true;
+    
 }

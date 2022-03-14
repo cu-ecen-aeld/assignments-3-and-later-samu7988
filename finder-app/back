@@ -1,0 +1,40 @@
+if [ $# -lt 1 ]
+then
+	echo "Using default directory ${OUTDIR} for output"
+else
+	OUTDIR=$1
+	echo "Using passed directory ${OUTDIR} for output"
+fi
+
+mkdir -p ${OUTDIR}
+cd "$OUTDIR"
+
+if [ ! -d "${OUTDIR}/linux-stable" ]; then
+    #Clone only if the repository does not exist.
+	echo "CLONING GIT LINUX STABLE VERSION ${KERNEL_VERSION} IN ${OUTDIR}"
+	git clone ${KERNEL_REPO} --depth 1 --single-branch --branch ${KERNEL_VERSION}
+fi
+
+if [ ! -e ${OUTDIR}/linux-stable/arch/${ARCH}/boot/Image ]; then
+    cd linux-stable
+    echo "Checking out version ${KERNEL_VERSION}"
+    git checkout ${KERNEL_VERSION}
+
+    # TODO: Add your kernel build steps here
+    echo "Kernel build starting here"
+    echo "Step1"
+    make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} mrproper
+    
+    echo "Step2"
+    make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} defconfig
+    
+    echo "Step3"
+    make -j4 ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} all
+    
+    echo "Step4"
+    make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} modules
+    
+    echo "Step5"
+    make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} dtbs
+    echo "Kernel build ending here"
+fi 
