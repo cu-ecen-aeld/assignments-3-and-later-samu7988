@@ -191,8 +191,8 @@ int read_file(char** buffer,int* read_data_len)
 		// 	length++;
 		// 	//printf("%c",dummy_read_char);
 		// }
+		int length = *read_data_len;
 		printf("%d",length);
-		return -1;
 		*buffer = malloc(length);
 		if (*buffer == NULL)
 		{
@@ -206,7 +206,6 @@ int read_file(char** buffer,int* read_data_len)
 			syslog(LOG_ERR, "read_file fread failed expected length%d actual length%d",length, status);
 			return -1;
 		}
-		*read_data_len = status;
 	}
 	close(fptr);
 
@@ -432,7 +431,7 @@ void cleanup()
 	
 	//Read the data from file /var/tmp/aesd_socket
 	read_buffer = NULL;
-	int read_data_len = 0;
+	int read_data_len = total;
 	status = read_file(&read_buffer,&read_data_len);
 	if(status == -1)
 	{
