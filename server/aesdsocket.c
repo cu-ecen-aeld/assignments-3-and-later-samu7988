@@ -160,15 +160,15 @@ int read_file(char** buffer,int* read_data_len)
 	else
 	{    
 		int status = 0;
-		status = fseek(fptr, 0, SEEK_END);
-		if(status != 0)
+		int length = lseek(fptr, 0, SEEK_END);
+		if(length == -1)
 		{
 			syslog(LOG_ERR, "read_file fseek failed");
 			return -1;
 		}
-		int length = ftell(fptr);
-		status = fseek(fptr, 0, SEEK_SET);
-		if(status != 0)
+		// int length = ftell(fptr);
+		status = lseek(fptr, 0, SEEK_SET);
+		if(status == -1)
 		{
 			syslog(LOG_ERR, "read_file fseek failed");
 			return -1;
@@ -397,7 +397,7 @@ void cleanup()
 	fptr = open(RECV_FILE_NAME,O_APPEND | O_WRONLY); //use a+ to open already existing file, w to create new file if not exist 
 	if(fptr == -1)
 	{
-		syslog(LOG_ERR,"fopen() \n\r");
+		syslog(LOG_ERR,"fopen() line 400 \n\r");
 		freeaddrinfo(serveinfo);
 		exit(1);
 	}
@@ -564,15 +564,16 @@ int daemonise_process(int argc ,char* argv[])
 int create_new_file()
 {
 	//open file to write the received data from client
-	int fptr = open(RECV_FILE_NAME,O_RDWR | O_CREAT | O_APPEND); //use a+ to open already existing file, w to create new file if not exist 
+	fptr =  open(RECV_FILE_NAME, O_CREAT | O_RDWR | O_APPEND | O_TRUNC, 0766);
 	if(fptr == -1)
 	{
-		syslog(LOG_ERR,"fopen() \n\r");
+		syslog(LOG_ERR,"open() open failed for %s \n\r",RECV_FILE_NAME);
 		freeaddrinfo(serveinfo);
+		close(fptr);
+
 		return -1;	
 	}
 
-	close(fptr);
 
 
 	return 0;
