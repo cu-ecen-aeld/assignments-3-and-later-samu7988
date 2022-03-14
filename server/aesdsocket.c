@@ -24,7 +24,7 @@
 #include <stdbool.h>
 #include <pthread.h>
 #include <sys/time.h>
-
+#include <fcntl.h>
 //***********************************************************************************
 //                              Macros
 //***********************************************************************************
@@ -52,7 +52,7 @@ int sockfd = 0;
 int accepted_sockfd = 0;
 char* read_buffer = NULL;
 char * recv_data = NULL;
-FILE* fptr = NULL;
+int fptr = 0;
 struct sockaddr_in client_addr;
 struct addrinfo* serveinfo = NULL;
 pthread_mutex_t mutex_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -151,8 +151,8 @@ int read_file(char** buffer,int* read_data_len)
 	}
 	
 	//open file to write the received data from client
-	FILE* fptr = fopen(RECV_FILE_NAME,"r"); //use a+ to open already existing file, w to create new file if not exist 
-	if (fptr == NULL)
+	int fptr = open(RECV_FILE_NAME,O_RDONLY); //use a+ to open already existing file, w to create new file if not exist 
+	if (fptr == -1)
 	{
 		syslog(LOG_ERR,"read_file fptr is NULL");
 		return -1;
@@ -179,7 +179,7 @@ int read_file(char** buffer,int* read_data_len)
 			syslog(LOG_ERR,"read_file malloc failed");
 			return -1;
 		}
-		status = fread(*buffer, 1, length, fptr);
+		status = read(fptr,*buffer,length);
 
 		if(status != length)
 		{
@@ -188,8 +188,8 @@ int read_file(char** buffer,int* read_data_len)
 		}
 		*read_data_len = status;
 	}
-	fclose(fptr);
-	fptr = NULL;
+	close(fptr);
+
 	return 0;
 }
 
@@ -207,8 +207,8 @@ void sighandler(int signal)
 
 
 		//completing any open connection operations, 
-		if(fptr != NULL)
-			fclose(fptr);
+		if(fptr != -1)
+			close(fptr);
 
 		//closing any open sockets, 
 		close(sockfd);
@@ -247,6 +247,7 @@ void sighandler(int signal)
  */
  /*-----------------------------------------------------------------------------------------------------------------------------*/
 //Reference: https://www.geeksforgeeks.org/strftime-function-in-c/
+#if(USE_AESD_CHAR_DEVICE == 0)
 void timer_handler(int signal)
 {
 	if(signal == SIGALRM)
@@ -279,8 +280,8 @@ void timer_handler(int signal)
 		}
 		//Write to file
 		//open file to write the received data from client
-		fptr = fopen(RECV_FILE_NAME,"a"); //use a+ to open already existing file, w to create new file if not exist 
-		if(fptr == NULL)
+		fptr = open(RECV_FILE_NAME,O_APPEND | O_WRONLY); //use a+ to open already existing file, w to create new file if not exist 
+		if(fptr == -1)
 		{
 			syslog(LOG_ERR,"fopen() \n\r");
 			freeaddrinfo(serveinfo);
@@ -290,8 +291,7 @@ void timer_handler(int signal)
 		//write to file at server end /var/tmp/aesd_socket
 		status = fwrite(&formatted_time[0],1,timer_string_len,fptr);
 		
-		fclose(fptr);
-		fptr = NULL;
+		close(fptr);
 		//Unlock the mutex
 		status = pthread_mutex_unlock(&mutex_lock);
 		if(status)
@@ -301,6 +301,7 @@ void timer_handler(int signal)
 		}
 	}
 }
+#endif
 /*------------------------------------------------------------------------------------------------------------------------------------*/
  /*
  @brief:Initialises timer to fire every time_period second
@@ -393,8 +394,8 @@ void cleanup()
 
 
 	//open file to write the received data from client
-	fptr = fopen(RECV_FILE_NAME,"a"); //use a+ to open already existing file, w to create new file if not exist 
-	if(fptr == NULL)
+	fptr = open(RECV_FILE_NAME,O_APPEND | O_WRONLY); //use a+ to open already existing file, w to create new file if not exist 
+	if(fptr == -1)
 	{
 		syslog(LOG_ERR,"fopen() \n\r");
 		freeaddrinfo(serveinfo);
@@ -402,12 +403,12 @@ void cleanup()
 	}
 
 	//write to file at server end /var/tmp/aesd_socket
-	status = fwrite(&recv_data[0],1,total,fptr);
+	status = write(fptr,&recv_data[0],total);
 	free(recv_data);
 	recv_data = NULL;
 
-	fclose(fptr);
-	fptr = NULL;
+	close(fptr);
+
 	
 	//Read the data from file /var/tmp/aesd_socket
 	read_buffer = NULL;
@@ -563,16 +564,16 @@ int daemonise_process(int argc ,char* argv[])
 int create_new_file()
 {
 	//open file to write the received data from client
-	FILE* fptr = fopen(RECV_FILE_NAME,"w"); //use a+ to open already existing file, w to create new file if not exist 
-	if(fptr == NULL)
+	int fptr = open(RECV_FILE_NAME,O_RDWR | O_CREAT | O_APPEND); //use a+ to open already existing file, w to create new file if not exist 
+	if(fptr == -1)
 	{
 		syslog(LOG_ERR,"fopen() \n\r");
 		freeaddrinfo(serveinfo);
 		return -1;	
 	}
 
-	fclose(fptr);
-	fptr = NULL;
+	close(fptr);
+
 
 	return 0;
 
