@@ -39,7 +39,7 @@
 #define BAD_FILE_DESCRIPTOR (9)
 #define GRACEFUL_EXIT   (2)
 
-#define USE_AESD_CHAR_DEVICE	1
+#define USE_AESD_CHAR_DEVICE	0
 #if (USE_AESD_CHAR_DEVICE == 1)
 	#define RECV_FILE_NAME ("/dev/aesdchar")
 #else
@@ -161,7 +161,6 @@ int read_file(char** buffer,int* read_data_len)
 	{    
 		int status = 0;
 		char dummy_read_char = 0;
-		int length = 0;
 		// int length = lseek(fptr, 0, SEEK_END);
 		// if(length == -1)
 		// {
@@ -176,10 +175,24 @@ int read_file(char** buffer,int* read_data_len)
 		// 	return -1;
 		// }
 
-		while(read(fptr,&dummy_read_char, 1) != -1)
-		{
-			length++;
-		}
+		printf("\nTest\n");
+		// while(read(fptr,&dummy_read_char, 1) != -1)
+		// {
+		// 	// if(length == 0)
+		// 	// {
+		// 	// 	*buffer = malloc(1);
+		// 	// 	(*buffer)[length] = dummy_read_char;
+		// 	// }
+		// 	// else
+		// 	// {
+		// 	// 	*buffer = realloc(*buffer,length+1);
+		// 	// 	(*buffer)[length] = dummy_read_char;
+		// 	// }
+		// 	length++;
+		// 	//printf("%c",dummy_read_char);
+		// }
+		printf("%d",length);
+		return -1;
 		*buffer = malloc(length);
 		if (*buffer == NULL)
 		{
@@ -399,7 +412,7 @@ void cleanup()
 		}
 	}
 
-
+	printf("Total: %d",total);
 	//open file to write the received data from client
 	fptr = open(RECV_FILE_NAME,O_APPEND | O_WRONLY); //use a+ to open already existing file, w to create new file if not exist 
 	if(fptr == -1)
