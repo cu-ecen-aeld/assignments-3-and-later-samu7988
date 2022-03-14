@@ -1,0 +1,61 @@
+ ## Output trace of oops for faulty write in qemu
+Unable to handle kernel NULL pointer dereference at virtual address 0000000000000000
+Mem abort info:
+ESR = 0x96000046
+EC = 0x25: DABT (current EL), IL = 32 bits
+SET = 0, FnV = 0
+EA = 0, S1PTW = 0
+Data abort info:
+ISV = 0, ISS = 0x00000046
+CM = 0, WnR = 1
+user pgtable: 4k pages, 39-bit VAs, pgdp=0000000042237000
+[0000000000000000] pgd=0000000041ff9003, p4d=0000000041ff9003, pud=0000000041ff9003, pmd=0000000000000000
+Internal error: Oops: 96000046 [#1] SMP
+Modules linked in: hello(O) scull(O) faulty(O)
+CPU: 0 PID: 152 Comm: sh Tainted: G O 5.10.7 #1
+Hardware name: linux,dummy-virt (DT)
+pstate: 80000005 (Nzcv daif -PAN -UAO -TCO BTYPE=--)
+pc : faulty_write+0x10/0x20 [faulty]
+lr : vfs_write+0xc0/0x290
+sp : ffffffc010c53db0
+x29: ffffffc010c53db0 x28: ffffff8001ff6400
+x27: 0000000000000000 x26: 0000000000000000
+x25: 0000000000000000 x24: 0000000000000000
+x23: 0000000000000000 x22: ffffffc010c53e30
+x21: 00000000004c9940 x20: ffffff8001fa6200
+x19: 0000000000000012 x18: 0000000000000000
+x17: 0000000000000000 x16: 0000000000000000
+x15: 0000000000000000 x14: 0000000000000000
+x13: 0000000000000000 x12: 0000000000000000
+x11: 0000000000000000 x10: 0000000000000000
+x9 : 0000000000000000 x8 : 0000000000000000
+x7 : 0000000000000000 x6 : 0000000000000000
+x5 : ffffff80020177b8 x4 : ffffffc008670000
+x3 : ffffffc010c53e30 x2 : 0000000000000012
+x1 : 0000000000000000 x0 : 0000000000000000
+Call trace:
+faulty_write+0x10/0x20 [faulty]
+ksys_write+0x6c/0x100
+__arm64_sys_write+0x1c/0x30
+el0_svc_common.constprop.0+0x9c/0x1c0
+do_el0_svc+0x70/0x90
+el0_svc+0x14/0x20
+el0_sync_handler+0xb0/0xc0
+el0_sync+0x174/0x180
+Code: d2800001 d2800000 d503233f d50323bf (b900003f)
+---[ end trace b2db6f2a75b58db7 ]---
+#Analysis and triage of  message
+
+Root cause: Dereferncing of null pointer
+Result: results in either segmentation fault or oops message(in this case)
+How did I figure out?
+The crash signature suggest that kernel NULL pointer dereference at virtual address 0
+All addresss are virtual address which are then converted to physical addresss using address translation. The mechanism might have failed result in NULL pointer
+
+ssize_t faulty_write (struct file *filp, const char __user *buf, size_t count,loff_t pos)
+{
+/ make a simple fault by dereferencing a NULL pointer */
+*(int *)0 = 0;
+return 0;
+}
+The above code results in the error discussed
