@@ -162,36 +162,7 @@ int read_file(char** buffer,int* read_data_len)
 	{    
 		int status = 0;
 		char dummy_read_char = 0;
-		// int length = lseek(fptr, 0, SEEK_END);
-		// if(length == -1)
-		// {
-		// 	perror("length is -1");
-		// 	syslog(LOG_ERR, "read_file fseek seek end failed");
-		// 	return -1;
-		// }
-		// status = lseek(fptr, 0, SEEK_SET);
-		// if(status == -1)
-		// {
-		// 	syslog(LOG_ERR, "read_file fseek seek set failed");
-		// 	return -1;
-		// }
 
-		printf("\nTest\n");
-		// while(read(fptr,&dummy_read_char, 1) != -1)
-		// {
-		// 	// if(length == 0)
-		// 	// {
-		// 	// 	*buffer = malloc(1);
-		// 	// 	(*buffer)[length] = dummy_read_char;
-		// 	// }
-		// 	// else
-		// 	// {
-		// 	// 	*buffer = realloc(*buffer,length+1);
-		// 	// 	(*buffer)[length] = dummy_read_char;
-		// 	// }
-		// 	length++;
-		// 	//printf("%c",dummy_read_char);
-		// }
 		int length = *read_data_len;
 		printf("%d",length);
 		*buffer = malloc(length);
@@ -412,7 +383,6 @@ void cleanup()
 		}
 	}
 
-	printf("Total: %d",total);
 	//open file to write the received data from client
 	fptr = open(RECV_FILE_NAME,O_APPEND | O_WRONLY); //use a+ to open already existing file, w to create new file if not exist 
 	if(fptr == -1)
