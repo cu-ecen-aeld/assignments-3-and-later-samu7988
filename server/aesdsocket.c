@@ -39,7 +39,7 @@
 #define BAD_FILE_DESCRIPTOR (9)
 #define GRACEFUL_EXIT   (2)
 
-#define USE_AESD_CHAR_DEVICE	1
+#define USE_AESD_CHAR_DEVICE	0
 #if (USE_AESD_CHAR_DEVICE == 1)
 	#define RECV_FILE_NAME ("/dev/aesdchar")
 #else
@@ -289,8 +289,8 @@ void timer_handler(int signal)
 		}
 
 		//write to file at server end /var/tmp/aesd_socket
-		status = fwrite(&formatted_time[0],1,timer_string_len,fptr);
-		
+		status = write(fptr,&formatted_time[0],timer_string_len);
+
 		close(fptr);
 		//Unlock the mutex
 		status = pthread_mutex_unlock(&mutex_lock);
@@ -652,8 +652,9 @@ int main(int argc ,char* argv[])
 
 	status = initialise_mutex_lock();
 	
-
+	#if USE_AESD_CHAR_DEVICE == 0
 	status = init_timer(TEN_SECOND);
+	#endif
 	if(status == -1)
 	{
 		syslog(LOG_ERR,"init_timer() failed");
