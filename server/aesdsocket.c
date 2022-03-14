@@ -39,7 +39,7 @@
 #define BAD_FILE_DESCRIPTOR (9)
 #define GRACEFUL_EXIT   (2)
 
-#define USE_AESD_CHAR_DEVICE	0
+#define USE_AESD_CHAR_DEVICE	1
 #if (USE_AESD_CHAR_DEVICE == 1)
 	#define RECV_FILE_NAME ("/dev/aesdchar")
 #else
@@ -160,18 +160,25 @@ int read_file(char** buffer,int* read_data_len)
 	else
 	{    
 		int status = 0;
-		int length = lseek(fptr, 0, SEEK_END);
-		if(length == -1)
+		char dummy_read_char = 0;
+		int length = 0;
+		// int length = lseek(fptr, 0, SEEK_END);
+		// if(length == -1)
+		// {
+		// 	perror("length is -1");
+		// 	syslog(LOG_ERR, "read_file fseek seek end failed");
+		// 	return -1;
+		// }
+		// status = lseek(fptr, 0, SEEK_SET);
+		// if(status == -1)
+		// {
+		// 	syslog(LOG_ERR, "read_file fseek seek set failed");
+		// 	return -1;
+		// }
+
+		while(read(fptr,&dummy_read_char, 1) != -1)
 		{
-			syslog(LOG_ERR, "read_file fseek failed");
-			return -1;
-		}
-		// int length = ftell(fptr);
-		status = lseek(fptr, 0, SEEK_SET);
-		if(status == -1)
-		{
-			syslog(LOG_ERR, "read_file fseek failed");
-			return -1;
+			length++;
 		}
 		*buffer = malloc(length);
 		if (*buffer == NULL)
