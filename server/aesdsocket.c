@@ -568,7 +568,7 @@ int create_new_file()
 
 		return -1;	
 	}
-
+	close(fptr);
 
 
 	return 0;
