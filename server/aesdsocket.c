@@ -24,7 +24,7 @@
 #include <stdbool.h>
 #include <pthread.h>
 #include <sys/time.h>
-
+#include <fcntl.h>
 //***********************************************************************************
 //                              Macros
 //***********************************************************************************
@@ -34,11 +34,17 @@
 #define FLAGS (AI_PASSIVE)
 #define IP_ADDR	(0)
 #define MAX_PENDING_CONN_REQUEST  (10)
-#define RECV_FILE_NAME ("/var/tmp/aesd_socketdata")
+//#define RECV_FILE_NAME ("/var/tmp/aesd_socketdata")
 #define TEN_SECOND (10)
 #define BAD_FILE_DESCRIPTOR (9)
 #define GRACEFUL_EXIT   (2)
 
+#define USE_AESD_CHAR_DEVICE	1
+#if (USE_AESD_CHAR_DEVICE == 1)
+	#define RECV_FILE_NAME ("/dev/aesdchar")
+#else
+	#define RECV_FILE_NAME ("/var/tmp/aesdsocketdata")
+#endif
 //***********************************************************************************
 //                              Global variables
 //***********************************************************************************
@@ -46,7 +52,8 @@ int sockfd = 0;
 int accepted_sockfd = 0;
 char* read_buffer = NULL;
 char * recv_data = NULL;
-FILE* fptr = NULL;
+int fptr = 0;
+int read_data_len = 0;
 struct sockaddr_in client_addr;
 struct addrinfo* serveinfo = NULL;
 pthread_mutex_t mutex_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -145,8 +152,8 @@ int read_file(char** buffer,int* read_data_len)
 	}
 	
 	//open file to write the received data from client
-	FILE* fptr = fopen(RECV_FILE_NAME,"r"); //use a+ to open already existing file, w to create new file if not exist 
-	if (fptr == NULL)
+	int fptr = open(RECV_FILE_NAME,O_RDONLY); //use a+ to open already existing file, w to create new file if not exist 
+	if (fptr == -1)
 	{
 		syslog(LOG_ERR,"read_file fptr is NULL");
 		return -1;
@@ -154,36 +161,31 @@ int read_file(char** buffer,int* read_data_len)
 	else
 	{    
 		int status = 0;
-		status = fseek(fptr, 0, SEEK_END);
-		if(status != 0)
-		{
-			syslog(LOG_ERR, "read_file fseek failed");
-			return -1;
-		}
-		int length = ftell(fptr);
-		status = fseek(fptr, 0, SEEK_SET);
-		if(status != 0)
-		{
-			syslog(LOG_ERR, "read_file fseek failed");
-			return -1;
-		}
+		char dummy_read_char = 0;
+
+		int length = *read_data_len;
+		//printf("%d",length);
 		*buffer = malloc(length);
 		if (*buffer == NULL)
 		{
 			syslog(LOG_ERR,"read_file malloc failed");
 			return -1;
 		}
-		status = fread(*buffer, 1, length, fptr);
+
+		do
+		{
+			status += read(fptr,*buffer+status,length);
+		} while (status != length);
+		
 
 		if(status != length)
 		{
 			syslog(LOG_ERR, "read_file fread failed expected length%d actual length%d",length, status);
 			return -1;
 		}
-		*read_data_len = status;
 	}
-	fclose(fptr);
-	fptr = NULL;
+	close(fptr);
+
 	return 0;
 }
 
@@ -201,8 +203,8 @@ void sighandler(int signal)
 
 
 		//completing any open connection operations, 
-		if(fptr != NULL)
-			fclose(fptr);
+		if(fptr != -1)
+			close(fptr);
 
 		//closing any open sockets, 
 		close(sockfd);
@@ -241,6 +243,7 @@ void sighandler(int signal)
  */
  /*-----------------------------------------------------------------------------------------------------------------------------*/
 //Reference: https://www.geeksforgeeks.org/strftime-function-in-c/
+#if(USE_AESD_CHAR_DEVICE == 0)
 void timer_handler(int signal)
 {
 	if(signal == SIGALRM)
@@ -273,8 +276,8 @@ void timer_handler(int signal)
 		}
 		//Write to file
 		//open file to write the received data from client
-		fptr = fopen(RECV_FILE_NAME,"a"); //use a+ to open already existing file, w to create new file if not exist 
-		if(fptr == NULL)
+		fptr = open(RECV_FILE_NAME,O_APPEND | O_WRONLY); //use a+ to open already existing file, w to create new file if not exist 
+		if(fptr == -1)
 		{
 			syslog(LOG_ERR,"fopen() \n\r");
 			freeaddrinfo(serveinfo);
@@ -282,10 +285,9 @@ void timer_handler(int signal)
 		}
 
 		//write to file at server end /var/tmp/aesd_socket
-		status = fwrite(&formatted_time[0],1,timer_string_len,fptr);
-		
-		fclose(fptr);
-		fptr = NULL;
+		status = write(fptr,&formatted_time[0],timer_string_len);
+
+		close(fptr);
 		//Unlock the mutex
 		status = pthread_mutex_unlock(&mutex_lock);
 		if(status)
@@ -295,6 +297,7 @@ void timer_handler(int signal)
 		}
 	}
 }
+#endif
 /*------------------------------------------------------------------------------------------------------------------------------------*/
  /*
  @brief:Initialises timer to fire every time_period second
@@ -385,27 +388,26 @@ void cleanup()
 		}
 	}
 
-
 	//open file to write the received data from client
-	fptr = fopen(RECV_FILE_NAME,"a"); //use a+ to open already existing file, w to create new file if not exist 
-	if(fptr == NULL)
+	fptr = open(RECV_FILE_NAME,O_APPEND | O_WRONLY); //use a+ to open already existing file, w to create new file if not exist 
+	if(fptr == -1)
 	{
-		syslog(LOG_ERR,"fopen() \n\r");
+		syslog(LOG_ERR,"fopen() line 400 \n\r");
 		freeaddrinfo(serveinfo);
 		exit(1);
 	}
 
 	//write to file at server end /var/tmp/aesd_socket
-	status = fwrite(&recv_data[0],1,total,fptr);
+	status = write(fptr,&recv_data[0],total);
 	free(recv_data);
 	recv_data = NULL;
 
-	fclose(fptr);
-	fptr = NULL;
+	close(fptr);
+
 	
 	//Read the data from file /var/tmp/aesd_socket
 	read_buffer = NULL;
-	int read_data_len = 0;
+	read_data_len += total;
 	status = read_file(&read_buffer,&read_data_len);
 	if(status == -1)
 	{
@@ -508,11 +510,13 @@ int register_signal_handler()
 		return -1;
 	}
 
+	#if (USE_AESD_CHAR_DEVICE == 0)
 	if(signal(SIGALRM,timer_handler) == SIG_ERR)
 	{
 		syslog(LOG_ERR,"SIGALARM failed");
 		return -1;
 	}
+	#endif
 }
 /*------------------------------------------------------------------------------------------------------------------------------------*/
  /*
@@ -555,16 +559,17 @@ int daemonise_process(int argc ,char* argv[])
 int create_new_file()
 {
 	//open file to write the received data from client
-	FILE* fptr = fopen(RECV_FILE_NAME,"w"); //use a+ to open already existing file, w to create new file if not exist 
-	if(fptr == NULL)
+	fptr =  open(RECV_FILE_NAME, O_CREAT | O_RDWR | O_APPEND | O_TRUNC, 0766);
+	if(fptr == -1)
 	{
-		syslog(LOG_ERR,"fopen() \n\r");
+		syslog(LOG_ERR,"open() open failed for %s \n\r",RECV_FILE_NAME);
 		freeaddrinfo(serveinfo);
+		close(fptr);
+
 		return -1;	
 	}
+	close(fptr);
 
-	fclose(fptr);
-	fptr = NULL;
 
 	return 0;
 
@@ -642,8 +647,9 @@ int main(int argc ,char* argv[])
 
 	status = initialise_mutex_lock();
 	
-
+	#if USE_AESD_CHAR_DEVICE == 0
 	status = init_timer(TEN_SECOND);
+	#endif
 	if(status == -1)
 	{
 		syslog(LOG_ERR,"init_timer() failed");
